@@ -17,7 +17,9 @@ jobs:
       - name: Shell syntax
         run: bash -n scripts/*.sh
       - name: Python syntax
-        run: python3 -m py_compile scripts/build-timeline.py
+        run: python3 -m py_compile scripts/build-timeline.py scripts/verify-app-icon.py
+      - name: App icon configuration
+        run: python3 scripts/verify-app-icon.py
 
   macos-build:
     name: macOS app build

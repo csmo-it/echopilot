@@ -113,7 +113,16 @@ install_signed_app
 # Refresh LaunchServices so Finder/Dock see the updated bundle metadata and icon.
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 if [[ -x "$LSREGISTER" ]]; then
+  "$LSREGISTER" -u "$DEST_APP" >/dev/null 2>&1 || true
   "$LSREGISTER" -f "$DEST_APP" >/dev/null 2>&1 || true
+fi
+
+touch "$DEST_APP" "$DEST_APP/Contents" "$DEST_APP/Contents/Info.plist" >/dev/null 2>&1 || true
+
+# Dock caches bundle icons aggressively. Restarting Dock is brief and avoids a
+# stale generic icon after reinstall. Set ECHOPILOT_REFRESH_DOCK=0 to skip.
+if [[ "${ECHOPILOT_REFRESH_DOCK:-1}" == "1" ]]; then
+  killall Dock >/dev/null 2>&1 || true
 fi
 
 BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$STAGED_APP/Contents/Info.plist")"
