@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONFIG="${CONFIG:-release}"
+PRODUCT="EchoPilotApp"
+APP_NAME="EchoPilot.app"
+OUT_DIR="$ROOT/build/app"
+APP_DIR="$OUT_DIR/$APP_NAME"
+CONTENTS="$APP_DIR/Contents"
+MACOS="$CONTENTS/MacOS"
+RESOURCES="$CONTENTS/Resources"
+
+cd "$ROOT"
+
+swift build -c "$CONFIG" --product "$PRODUCT"
+BIN_PATH="$(swift build -c "$CONFIG" --show-bin-path)/$PRODUCT"
+
+rm -rf "$APP_DIR"
+mkdir -p "$MACOS" "$RESOURCES"
+cp "$BIN_PATH" "$MACOS/EchoPilot"
+chmod +x "$MACOS/EchoPilot"
+
+cat > "$CONTENTS/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>EchoPilot</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.echopilot.app</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>EchoPilot</string>
+    <key>CFBundleDisplayName</key>
+    <string>EchoPilot</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>EchoPilot records the selected microphone for meeting notes after user consent.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>EchoPilot captures system audio and visible meeting windows after user consent.</string>
+</dict>
+</plist>
+PLIST
+
+if command -v codesign >/dev/null 2>&1; then
+  codesign --force --deep --sign - --entitlements "$ROOT/Xcode/EchoPilot/EchoPilot.entitlements" "$APP_DIR" >/dev/null 2>&1 || true
+fi
+
+echo "Built $APP_DIR"
+echo "Open with: open '$APP_DIR'"

@@ -1,0 +1,16 @@
+.DS_Store
+/.build
+/DerivedData
+*.xcuserdata
+*.xcworkspace/xcuserdata
+recordings/
+transcripts/
+*.m4a
+*.wav
+*.caf
+*.mp3
+.echopilot-signing.env
+__pycache__/
+*.pyc
+/dist
+/build
