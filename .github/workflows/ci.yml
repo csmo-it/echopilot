@@ -16,6 +16,11 @@ jobs:
           python-version: '3.x'
       - name: Shell syntax
         run: bash -n scripts/*.sh
+      - name: Whisper language argument handling
+        run: |
+          ECHOPILOT_TEST_LANGUAGE_ARGS=1 WHISPER_LANGUAGE=auto scripts/transcribe-local-whisper.sh | grep -F 'language_args=<omitted>'
+          ECHOPILOT_TEST_LANGUAGE_ARGS=1 WHISPER_LANGUAGE=Auto scripts/transcribe-local-whisper.sh | grep -F 'language_args=<omitted>'
+          ECHOPILOT_TEST_LANGUAGE_ARGS=1 WHISPER_LANGUAGE=de scripts/transcribe-local-whisper.sh | grep -F 'language_args=--language de'
       - name: Python syntax
         run: python3 -m py_compile scripts/build-timeline.py scripts/verify-app-icon.py
       - name: App icon configuration

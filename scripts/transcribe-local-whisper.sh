@@ -8,6 +8,41 @@ WHISPER_DEVICE="${WHISPER_DEVICE:-auto}"
 WHISPER_FP16="${WHISPER_FP16:-auto}"
 UPDATE_DEPS="${ECHOPILOT_UPDATE_WHISPER_DEPS:-0}"
 
+normalize_whisper_language() {
+  local raw="${1:-}"
+  local normalized
+  normalized="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+
+  case "$normalized" in
+    ""|auto|detect|autodetect|auto-detect|none|default)
+      printf ''
+      ;;
+    deutsch|german)
+      printf 'de'
+      ;;
+    englisch|english)
+      printf 'en'
+      ;;
+    *)
+      printf '%s' "$normalized"
+      ;;
+  esac
+}
+
+NORMALIZED_LANGUAGE="$(normalize_whisper_language "$LANGUAGE")"
+
+if [[ "${ECHOPILOT_TEST_LANGUAGE_ARGS:-0}" == "1" ]]; then
+  printf 'raw_language=%s\n' "$LANGUAGE"
+  if [[ -n "$NORMALIZED_LANGUAGE" ]]; then
+    printf 'normalized_language=%s\n' "$NORMALIZED_LANGUAGE"
+    printf 'language_args=--language %s\n' "$NORMALIZED_LANGUAGE"
+  else
+    printf 'normalized_language=auto\n'
+    printf 'language_args=<omitted>\n'
+  fi
+  exit 0
+fi
+
 if [[ -z "$BUNDLE_DIR" ]]; then
   echo "Usage: scripts/transcribe-local-whisper.sh recordings/dual-test" >&2
   echo "Optional env:" >&2
@@ -109,8 +144,8 @@ if [[ "$WHISPER_FP16" == "auto" ]]; then
 fi
 
 LANGUAGE_ARGS=()
-if [[ -n "$LANGUAGE" && "$LANGUAGE" != "auto" ]]; then
-  LANGUAGE_ARGS=(--language "$LANGUAGE")
+if [[ -n "$NORMALIZED_LANGUAGE" ]]; then
+  LANGUAGE_ARGS=(--language "$NORMALIZED_LANGUAGE")
 fi
 
 CURRENT_DEVICE="$WHISPER_DEVICE"
@@ -118,6 +153,11 @@ CURRENT_FP16="$WHISPER_FP16"
 
 printf 'EchoPilot Whisper settings:\n'
 printf '  model:  %s\n' "$MODEL"
+if [[ -n "$NORMALIZED_LANGUAGE" ]]; then
+  printf '  language: %s\n' "$NORMALIZED_LANGUAGE"
+else
+  printf '  language: auto-detect\n'
+fi
 printf '  device: %s\n' "$CURRENT_DEVICE"
 printf '  fp16:   %s\n' "$CURRENT_FP16"
 printf '  output: txt/vtt/srt/tsv/json\n'
