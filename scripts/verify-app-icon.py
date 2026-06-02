@@ -67,6 +67,10 @@ if plist.get("CFBundleIconFile") != "EchoPilot":
 build_script = BUILD_SCRIPT.read_text()
 if 'cp "$ROOT/Xcode/EchoPilot/EchoPilot.icns" "$RESOURCES/EchoPilot.icns"' not in build_script:
     fail("build-echopilot-app.sh does not copy EchoPilot.icns into Contents/Resources")
+if "<key>CFBundleIconName</key>" not in build_script or "<string>AppIcon</string>" not in build_script:
+    fail("build-echopilot-app.sh generated Info.plist does not set CFBundleIconName=AppIcon")
+if "<key>CFBundleIconFile</key>" not in build_script or "<string>EchoPilot</string>" not in build_script:
+    fail("build-echopilot-app.sh generated Info.plist does not set CFBundleIconFile=EchoPilot")
 
 project = PROJECT.read_text()
 if "ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;" not in project:

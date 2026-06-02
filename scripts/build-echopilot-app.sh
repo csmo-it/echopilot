@@ -39,6 +39,10 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <string>EchoPilot</string>
     <key>CFBundleDisplayName</key>
     <string>EchoPilot</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
+    <key>CFBundleIconFile</key>
+    <string>EchoPilot</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
