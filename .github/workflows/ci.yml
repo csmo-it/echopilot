@@ -18,9 +18,12 @@ jobs:
         run: bash -n scripts/*.sh
       - name: Whisper language argument handling
         run: |
+          ! grep -n 'LANGUAGE_ARGS\[\|LANGUAGE_ARGS=' scripts/transcribe-local-whisper.sh
           ECHOPILOT_TEST_LANGUAGE_ARGS=1 WHISPER_LANGUAGE=auto scripts/transcribe-local-whisper.sh | grep -F 'language_args=<omitted>'
           ECHOPILOT_TEST_LANGUAGE_ARGS=1 WHISPER_LANGUAGE=Auto scripts/transcribe-local-whisper.sh | grep -F 'language_args=<omitted>'
           ECHOPILOT_TEST_LANGUAGE_ARGS=1 WHISPER_LANGUAGE=de scripts/transcribe-local-whisper.sh | grep -F 'language_args=--language de'
+          bash -u -c 'NORMALIZED_LANGUAGE=""; CURRENT_DEVICE=cpu; CURRENT_FP16=False; MODEL=turbo; OUT=/tmp/out; VENV=.venv-transcribe; input=/tmp/in.m4a; command=("$VENV/bin/whisper" "$input" --model "$MODEL"); if [[ -n "$NORMALIZED_LANGUAGE" ]]; then command+=(--language "$NORMALIZED_LANGUAGE"); fi; command+=(--device "$CURRENT_DEVICE" --fp16 "$CURRENT_FP16" --task transcribe --output_format all --output_dir "$OUT" --verbose False); printf "%s\n" "${command[@]}"' > /tmp/echopilot-command.txt
+          ! grep -Fx -- '--language' /tmp/echopilot-command.txt
       - name: Python syntax
         run: python3 -m py_compile scripts/build-timeline.py scripts/verify-app-icon.py
       - name: App icon configuration

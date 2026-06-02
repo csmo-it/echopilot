@@ -143,11 +143,6 @@ if [[ "$WHISPER_FP16" == "auto" ]]; then
   fi
 fi
 
-LANGUAGE_ARGS=()
-if [[ -n "$NORMALIZED_LANGUAGE" ]]; then
-  LANGUAGE_ARGS=(--language "$NORMALIZED_LANGUAGE")
-fi
-
 CURRENT_DEVICE="$WHISPER_DEVICE"
 CURRENT_FP16="$WHISPER_FP16"
 
@@ -172,16 +167,21 @@ printf '  tracks: system + mic are transcribed sequentially\n\n'
 run_whisper() {
   local input="$1"
   local label="$2"
+  local command=("$VENV/bin/whisper" "$input" --model "$MODEL")
+  if [[ -n "$NORMALIZED_LANGUAGE" ]]; then
+    command+=(--language "$NORMALIZED_LANGUAGE")
+  fi
+  command+=(
+    --device "$CURRENT_DEVICE"
+    --fp16 "$CURRENT_FP16"
+    --task transcribe
+    --output_format all
+    --output_dir "$OUT"
+    --verbose False
+  )
+
   printf 'Transcribing %s: %s\n' "$label" "$input"
-  if "$VENV/bin/whisper" "$input" \
-    --model "$MODEL" \
-    "${LANGUAGE_ARGS[@]}" \
-    --device "$CURRENT_DEVICE" \
-    --fp16 "$CURRENT_FP16" \
-    --task transcribe \
-    --output_format all \
-    --output_dir "$OUT" \
-    --verbose False; then
+  if "${command[@]}"; then
     return 0
   fi
 
@@ -189,15 +189,19 @@ run_whisper() {
     echo "MPS acceleration was not stable for $label; switching this and remaining tracks to CPU fallback..." >&2
     CURRENT_DEVICE="cpu"
     CURRENT_FP16="False"
-    "$VENV/bin/whisper" "$input" \
-      --model "$MODEL" \
-      "${LANGUAGE_ARGS[@]}" \
-      --device "$CURRENT_DEVICE" \
-      --fp16 "$CURRENT_FP16" \
-      --task transcribe \
-      --output_format all \
-      --output_dir "$OUT" \
+    command=("$VENV/bin/whisper" "$input" --model "$MODEL")
+    if [[ -n "$NORMALIZED_LANGUAGE" ]]; then
+      command+=(--language "$NORMALIZED_LANGUAGE")
+    fi
+    command+=(
+      --device "$CURRENT_DEVICE"
+      --fp16 "$CURRENT_FP16"
+      --task transcribe
+      --output_format all
+      --output_dir "$OUT"
       --verbose False
+    )
+    "${command[@]}"
     echo "CPU fallback completed for $label."
     return 0
   fi
