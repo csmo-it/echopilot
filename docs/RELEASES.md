@@ -53,24 +53,61 @@ scripts/install-echopilot-app.sh
 open /Applications/EchoPilot.app
 ```
 
-## Notarized release outline
+## Signed + notarized release flow
 
-Once Developer ID credentials are available:
+Use this for public release assets when you have a paid Apple Developer account. This signs with a **Developer ID Application** certificate, submits the DMG to Apple notarization, and staples the notarization ticket.
+
+### 1. Create/download the Developer ID Application certificate
+
+On the Mac that builds releases:
 
 ```bash
-# Build app
-scripts/install-echopilot-app.sh
+Xcode → Settings → Accounts → Manage Certificates… → + → Developer ID Application
+```
 
-# Sign with Developer ID Application identity instead of ad-hoc/dev signing.
-codesign --force --deep --options runtime \
-  --entitlements Xcode/EchoPilot/EchoPilot.entitlements \
-  --sign "Developer ID Application: <Team Name> (<TEAMID>)" \
-  /Applications/EchoPilot.app
+Verify it exists and has a private key:
 
-# Create DMG using create-dmg or hdiutil.
-# Submit for notarization.
-xcrun notarytool submit EchoPilot.dmg --keychain-profile <profile> --wait
-xcrun stapler staple EchoPilot.dmg
+```bash
+security find-identity -v -p codesigning | grep "Developer ID Application"
+```
+
+### 2. Create a notarytool keychain profile once
+
+Use an app-specific password for your Apple ID, or an App Store Connect API key. Apple ID flow:
+
+```bash
+xcrun notarytool store-credentials echopilot-notary \
+  --apple-id "YOUR_APPLE_ID@example.com" \
+  --team-id "YOUR_TEAM_ID" \
+  --password "APP_SPECIFIC_PASSWORD"
+```
+
+This stores credentials in your local Keychain; do not commit passwords or certificates.
+
+### 3. Build, sign, notarize, staple
+
+```bash
+git pull
+NOTARY_PROFILE=echopilot-notary scripts/package-echopilot-notarized.sh
+```
+
+Outputs:
+
+```text
+dist/EchoPilot-<version>.dmg
+dist/EchoPilot-<version>.zip
+```
+
+Upload the DMG to the GitHub Release. Prefer the DMG for public users because it carries the stapled notarization ticket.
+
+Optional local config file, ignored by Git:
+
+```bash
+cat > .echopilot-signing.env <<'EOF'
+NOTARY_PROFILE=echopilot-notary
+# Optional if auto-detection finds the wrong certificate:
+# DEVELOPER_ID_APPLICATION_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+EOF
 ```
 
 ## GitHub Actions
