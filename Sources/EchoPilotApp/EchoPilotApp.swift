@@ -290,6 +290,8 @@ enum TranscriptPreviewKind: String, CaseIterable, Identifiable, Hashable {
 
 enum EchoPilotNotifications {
     static let recordingStateChanged = Notification.Name("EchoPilotRecordingStateChanged")
+    static let startRecordingRequested = Notification.Name("EchoPilotStartRecordingRequested")
+    static let stopRecordingRequested = Notification.Name("EchoPilotStopRecordingRequested")
 }
 
 enum MeetingCallDetector {
@@ -1695,7 +1697,16 @@ struct ContentView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
         }
-        .onAppear { vm.refreshPermissions(showOverlayIfNeeded: true) }
+        .onAppear {
+            EchoPilotWindowController.shared.attachToExistingWindows()
+            vm.refreshPermissions(showOverlayIfNeeded: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.startRecordingRequested)) { _ in
+            vm.start()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.stopRecordingRequested)) { _ in
+            vm.stop()
+        }
     }
 
     private var permissionsOverlay: some View {
@@ -2229,10 +2240,48 @@ struct ContentView: View {
     }
 }
 
+final class EchoPilotWindowController: NSObject, NSWindowDelegate {
+    static let shared = EchoPilotWindowController()
+
+    private override init() {
+        super.init()
+    }
+
+    func attachToExistingWindows() {
+        for window in NSApp.windows {
+            window.delegate = self
+        }
+    }
+
+    func showApp() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.unhide(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        attachToExistingWindows()
+
+        if let window = NSApp.windows.first(where: { !$0.isMiniaturized }) ?? NSApp.windows.first {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            window.orderFrontRegardless()
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        // Keep the SwiftUI window alive so the menu-bar item can bring it back.
+        sender.orderOut(nil)
+        return false
+    }
+}
+
 final class EchoPilotStatusBarController: NSObject {
     static let shared = EchoPilotStatusBarController()
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    private let showItem = NSMenuItem(title: "EchoPilot anzeigen", action: #selector(showApp), keyEquivalent: "")
+    private let recordingItem = NSMenuItem(title: "Aufnahme starten", action: #selector(toggleRecording), keyEquivalent: "")
+    private let quitItem = NSMenuItem(title: "Beenden", action: #selector(quitApp), keyEquivalent: "q")
     private var blinkTimer: Timer?
     private var isRecording = false
     private var blinkOn = true
@@ -2262,15 +2311,18 @@ final class EchoPilotStatusBarController: NSObject {
         button.toolTip = "EchoPilot"
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "EchoPilot anzeigen", action: #selector(showApp), keyEquivalent: ""))
+        menu.addItem(showItem)
+        menu.addItem(recordingItem)
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Beenden", action: #selector(quitApp), keyEquivalent: "q"))
+        menu.addItem(quitItem)
         menu.items.forEach { $0.target = self }
         statusItem.menu = menu
+        updateRecordingMenuItem()
     }
 
     @objc private func recordingStateChanged(_ notification: Notification) {
         isRecording = notification.userInfo?["isRecording"] as? Bool ?? false
+        updateRecordingMenuItem()
         if isRecording {
             startBlinking()
         } else {
@@ -2301,6 +2353,11 @@ final class EchoPilotStatusBarController: NSObject {
         statusItem.button?.toolTip = isRecording ? "EchoPilot nimmt auf" : "EchoPilot"
     }
 
+    private func updateRecordingMenuItem() {
+        recordingItem.title = isRecording ? "Aufnahme stoppen" : "Aufnahme starten"
+        recordingItem.image = NSImage(systemSymbolName: isRecording ? "stop.circle.fill" : "record.circle", accessibilityDescription: recordingItem.title)
+    }
+
     private func makeStatusImage(named name: String, fallbackSymbol: String) -> NSImage {
         let image = NSImage(named: NSImage.Name(name))
             ?? NSImage(systemSymbolName: fallbackSymbol, accessibilityDescription: name)
@@ -2311,13 +2368,15 @@ final class EchoPilotStatusBarController: NSObject {
     }
 
     @objc func showApp() {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        if let window = NSApp.windows.first {
-            if window.isMiniaturized {
-                window.deminiaturize(nil)
-            }
-            window.makeKeyAndOrderFront(nil)
+        EchoPilotWindowController.shared.showApp()
+    }
+
+    @objc private func toggleRecording() {
+        if isRecording {
+            NotificationCenter.default.post(name: EchoPilotNotifications.stopRecordingRequested, object: nil)
+        } else {
+            showApp()
+            NotificationCenter.default.post(name: EchoPilotNotifications.startRecordingRequested, object: nil)
         }
     }
 
@@ -2331,6 +2390,7 @@ final class EchoPilotAppDelegate: NSObject, NSApplicationDelegate {
         EchoPilotStatusBarController.shared.start()
         NSApp.setActivationPolicy(.regular)
         DispatchQueue.main.async {
+            EchoPilotWindowController.shared.attachToExistingWindows()
             NSApp.activate(ignoringOtherApps: true)
             NSApp.windows.first?.makeKeyAndOrderFront(nil)
         }
@@ -2341,7 +2401,7 @@ final class EchoPilotAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        EchoPilotStatusBarController.shared.showApp()
+        EchoPilotWindowController.shared.showApp()
         return true
     }
 }
@@ -2355,6 +2415,7 @@ struct EchoPilotApp: App {
             ContentView()
                 .onAppear {
                     NSApp.setActivationPolicy(.regular)
+                    EchoPilotWindowController.shared.attachToExistingWindows()
                     NSApp.activate(ignoringOtherApps: true)
                     NSApp.windows.first?.makeKeyAndOrderFront(nil)
                 }
