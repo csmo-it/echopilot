@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_FILE="$ROOT/EchoPilot.xcodeproj/project.pbxproj"
+INFO_PLIST="$ROOT/Xcode/EchoPilot/Info.plist"
 VERSION="${1:-}"
 BUILD="${2:-}"
 
@@ -47,21 +48,38 @@ if [[ ! "$BUILD" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
-python3 - "$PROJECT_FILE" "$VERSION" "$BUILD" <<'PY'
+python3 - "$PROJECT_FILE" "$INFO_PLIST" "$VERSION" "$BUILD" <<'PY'
 from pathlib import Path
 import re
 import sys
 
 path = Path(sys.argv[1])
-version = sys.argv[2]
-build = sys.argv[3]
+plist = Path(sys.argv[2])
+version = sys.argv[3]
+build = sys.argv[4]
 text = path.read_text()
 text, marketing_count = re.subn(r'MARKETING_VERSION = [^;]+;', f'MARKETING_VERSION = {version};', text)
 text, build_count = re.subn(r'CURRENT_PROJECT_VERSION = [^;]+;', f'CURRENT_PROJECT_VERSION = {build};', text)
 if marketing_count == 0 or build_count == 0:
     raise SystemExit(f'Failed to update version fields: MARKETING_VERSION={marketing_count}, CURRENT_PROJECT_VERSION={build_count}')
 path.write_text(text)
+
+plist_text = plist.read_text()
+plist_text = re.sub(
+    r'(<key>CFBundleShortVersionString</key>\s*<string>)(.*?)(</string>)',
+    r'\1$(MARKETING_VERSION)\3',
+    plist_text,
+    flags=re.S,
+)
+plist_text = re.sub(
+    r'(<key>CFBundleVersion</key>\s*<string>)(.*?)(</string>)',
+    r'\1$(CURRENT_PROJECT_VERSION)\3',
+    plist_text,
+    flags=re.S,
+)
+plist.write_text(plist_text)
 print(f'Updated {path}: MARKETING_VERSION={version}, CURRENT_PROJECT_VERSION={build}')
+print(f'Verified {plist}: CFBundleShortVersionString=$(MARKETING_VERSION), CFBundleVersion=$(CURRENT_PROJECT_VERSION)')
 PY
 
 grep -n "MARKETING_VERSION\|CURRENT_PROJECT_VERSION" "$PROJECT_FILE" | sed -n '1,20p'

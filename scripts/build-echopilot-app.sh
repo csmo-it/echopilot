@@ -10,6 +10,18 @@ APP_DIR="$OUT_DIR/$APP_NAME"
 CONTENTS="$APP_DIR/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
+PROJECT_FILE="$ROOT/EchoPilot.xcodeproj/project.pbxproj"
+
+app_version() {
+  grep -m1 'MARKETING_VERSION = ' "$PROJECT_FILE" | sed -E 's/.*MARKETING_VERSION = "?([^";]+)"?;.*/\1/'
+}
+
+build_number() {
+  grep -m1 'CURRENT_PROJECT_VERSION = ' "$PROJECT_FILE" | sed -E 's/.*CURRENT_PROJECT_VERSION = "?([^";]+)"?;.*/\1/'
+}
+
+APP_VERSION="${APP_VERSION:-$(app_version)}"
+BUILD_NUMBER="${BUILD_NUMBER:-$(build_number)}"
 
 cd "$ROOT"
 
@@ -22,7 +34,7 @@ cp "$BIN_PATH" "$MACOS/EchoPilot"
 chmod +x "$MACOS/EchoPilot"
 cp "$ROOT/Xcode/EchoPilot/EchoPilot.icns" "$RESOURCES/EchoPilot.icns"
 
-cat > "$CONTENTS/Info.plist" <<'PLIST'
+cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -46,9 +58,9 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>$APP_VERSION</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>$BUILD_NUMBER</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>NSHighResolutionCapable</key>

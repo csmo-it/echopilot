@@ -28,6 +28,12 @@ jobs:
         run: python3 -m py_compile scripts/build-timeline.py scripts/verify-app-icon.py
       - name: App icon configuration
         run: python3 scripts/verify-app-icon.py
+      - name: Version metadata
+        run: |
+          grep -F '<string>$(MARKETING_VERSION)</string>' Xcode/EchoPilot/Info.plist
+          grep -F '<string>$(CURRENT_PROJECT_VERSION)</string>' Xcode/EchoPilot/Info.plist
+          grep -n 'MARKETING_VERSION = ' EchoPilot.xcodeproj/project.pbxproj
+          grep -n 'CURRENT_PROJECT_VERSION = ' EchoPilot.xcodeproj/project.pbxproj
 
   macos-build:
     name: macOS app build

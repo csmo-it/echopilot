@@ -1106,8 +1106,14 @@ enum GitHubUpdateChecker {
     }
 
     static func normalizedVersion(_ version: String) -> String {
-        version.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: #"^[vV]"#, with: "", options: .regularExpression)
+        let trimmed = version.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let range = trimmed.range(
+            of: #"[0-9]+(\.[0-9]+){1,3}([-+][A-Za-z0-9.-]+)?"#,
+            options: .regularExpression
+        ) {
+            return String(trimmed[range])
+        }
+        return trimmed.replacingOccurrences(of: #"^[vV]"#, with: "", options: .regularExpression)
     }
 
     static func isVersion(_ candidate: String, newerThan current: String) -> Bool {
