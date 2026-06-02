@@ -166,6 +166,24 @@ If the latest release tag, for example `v0.1.1`, is newer than the installed app
 
 This is an update notification only; EchoPilot does not download, install, or run updates automatically.
 
+## Versioning
+
+EchoPilot reads its installed app version from `CFBundleShortVersionString`, which is generated from Xcode's `MARKETING_VERSION`. The internal build number comes from `CURRENT_PROJECT_VERSION`.
+
+Use the helper script instead of editing the Xcode project by hand:
+
+```bash
+scripts/set-echopilot-version.sh 0.1.1
+```
+
+This updates `MARKETING_VERSION` and increments `CURRENT_PROJECT_VERSION`. You can also set the build number explicitly:
+
+```bash
+scripts/set-echopilot-version.sh 0.1.1 2
+```
+
+For GitHub Releases, tag releases with the same public version, usually prefixed with `v`, for example `v0.1.1`. EchoPilot's startup update check compares that release tag against the installed app version.
+
 ## Publishing and releases
 
 - See [`docs/PUBLICATION.md`](docs/PUBLICATION.md) before making a repository public.
