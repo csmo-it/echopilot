@@ -154,6 +154,18 @@ Important:
 - EchoPilot never starts recording automatically.
 - The user still has to confirm consent and click Start Recording.
 
+## Update notifications
+
+On startup, EchoPilot checks the public GitHub Releases endpoint for the latest non-draft release:
+
+```text
+https://api.github.com/repos/csmo-it/echopilot/releases/latest
+```
+
+If the latest release tag, for example `v0.1.1`, is newer than the installed app version, EchoPilot shows an in-app banner with a link to the GitHub Release page. Dismissing the banner stores only the dismissed version in local `UserDefaults`, so the same release does not nag repeatedly. A newer release will show again.
+
+This is an update notification only; EchoPilot does not download, install, or run updates automatically.
+
 ## Publishing and releases
 
 - See [`docs/PUBLICATION.md`](docs/PUBLICATION.md) before making a repository public.

@@ -4,6 +4,7 @@ import AVFoundation
 import CoreMedia
 import AppKit
 import AudioToolbox
+import Foundation
 
 struct TrackStats: Equatable {
     var buffers: Int = 0
@@ -1017,6 +1018,7 @@ enum AppSettings {
     private static let selectedAudioInputIDKey = "selectedAudioInputID"
     private static let whisperModelKey = "whisperModel"
     private static let whisperLanguageKey = "whisperLanguage"
+    private static let dismissedUpdateVersionKey = "dismissedUpdateVersion"
 
     static var selectedAudioInputID: String? {
         get { UserDefaults.standard.string(forKey: selectedAudioInputIDKey) }
@@ -1034,6 +1036,100 @@ enum AppSettings {
     static var whisperLanguage: String {
         get { UserDefaults.standard.string(forKey: whisperLanguageKey) ?? "de" }
         set { UserDefaults.standard.set(newValue, forKey: whisperLanguageKey) }
+    }
+
+    static var dismissedUpdateVersion: String? {
+        get { UserDefaults.standard.string(forKey: dismissedUpdateVersionKey) }
+        set {
+            if let newValue, !newValue.isEmpty { UserDefaults.standard.set(newValue, forKey: dismissedUpdateVersionKey) }
+            else { UserDefaults.standard.removeObject(forKey: dismissedUpdateVersionKey) }
+        }
+    }
+}
+
+struct UpdateInfo: Equatable {
+    let version: String
+    let name: String
+    let releaseURL: URL
+    let publishedAt: Date?
+}
+
+enum GitHubUpdateChecker {
+    private struct LatestReleaseResponse: Decodable {
+        let tagName: String
+        let name: String?
+        let htmlURL: URL
+        let publishedAt: Date?
+
+        enum CodingKeys: String, CodingKey {
+            case tagName = "tag_name"
+            case name
+            case htmlURL = "html_url"
+            case publishedAt = "published_at"
+        }
+    }
+
+    static let releasesURL = URL(string: "https://github.com/csmo-it/echopilot/releases")!
+    private static let latestReleaseAPIURL = URL(string: "https://api.github.com/repos/csmo-it/echopilot/releases/latest")!
+
+    static var currentVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+    }
+
+    static func checkForUpdate() async throws -> UpdateInfo? {
+        var request = URLRequest(url: latestReleaseAPIURL)
+        request.httpMethod = "GET"
+        request.setValue("EchoPilot/\(currentVersion)", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, http.statusCode == 404 {
+            // No public release exists yet. That is fine for local/dev builds.
+            return nil
+        }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw RuntimeError("GitHub update check failed.")
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let latest = try decoder.decode(LatestReleaseResponse.self, from: data)
+        let latestVersion = normalizedVersion(latest.tagName)
+        guard isVersion(latestVersion, newerThan: currentVersion) else { return nil }
+
+        return UpdateInfo(
+            version: latestVersion,
+            name: latest.name ?? "EchoPilot \(latestVersion)",
+            releaseURL: latest.htmlURL,
+            publishedAt: latest.publishedAt
+        )
+    }
+
+    static func normalizedVersion(_ version: String) -> String {
+        version.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: #"^[vV]"#, with: "", options: .regularExpression)
+    }
+
+    static func isVersion(_ candidate: String, newerThan current: String) -> Bool {
+        let lhs = versionComponents(candidate)
+        let rhs = versionComponents(current)
+        let maxCount = max(lhs.count, rhs.count)
+        for index in 0..<maxCount {
+            let left = index < lhs.count ? lhs[index] : 0
+            let right = index < rhs.count ? rhs[index] : 0
+            if left > right { return true }
+            if left < right { return false }
+        }
+        return false
+    }
+
+    private static func versionComponents(_ version: String) -> [Int] {
+        normalizedVersion(version)
+            .split(separator: ".")
+            .map { part in
+                let numericPrefix = part.prefix { $0.isNumber }
+                return Int(numericPrefix) ?? 0
+            }
     }
 }
 
@@ -1234,6 +1330,9 @@ final class MeetingCaptureViewModel: ObservableObject {
     @Published var microphonePermissionStatus = "Nicht geprüft"
     @Published var screenCapturePermissionGranted = false
     @Published var screenCapturePermissionStatus = "Nicht geprüft"
+    @Published var updateInfo: UpdateInfo?
+    @Published var isCheckingForUpdates = false
+    @Published var updateCheckStatus = ""
 
     var permissionsReady: Bool {
         microphonePermissionGranted && screenCapturePermissionGranted
@@ -1253,6 +1352,45 @@ final class MeetingCaptureViewModel: ObservableObject {
         prepareNewRecording()
         refreshPermissions(showOverlayIfNeeded: true)
         startMeetingDetector()
+        checkForUpdatesOnStartup()
+    }
+
+    func checkForUpdatesOnStartup() {
+        checkForUpdates(showStatus: false)
+    }
+
+    func checkForUpdates(showStatus: Bool = true) {
+        guard !isCheckingForUpdates else { return }
+        isCheckingForUpdates = true
+        if showStatus { updateCheckStatus = "Suche nach Updates…" }
+        Task {
+            do {
+                let latest = try await GitHubUpdateChecker.checkForUpdate()
+                if let latest, AppSettings.dismissedUpdateVersion != latest.version {
+                    updateInfo = latest
+                    updateCheckStatus = "Neue Version verfügbar: \(latest.version)"
+                } else if showStatus {
+                    updateCheckStatus = "EchoPilot ist aktuell (\(GitHubUpdateChecker.currentVersion))."
+                }
+            } catch {
+                if showStatus {
+                    updateCheckStatus = "Update-Check fehlgeschlagen: \(error.localizedDescription)"
+                }
+            }
+            isCheckingForUpdates = false
+        }
+    }
+
+    func openLatestRelease() {
+        let url = updateInfo?.releaseURL ?? GitHubUpdateChecker.releasesURL
+        NSWorkspace.shared.open(url)
+    }
+
+    func dismissUpdateInfo() {
+        if let updateInfo {
+            AppSettings.dismissedUpdateVersion = updateInfo.version
+        }
+        self.updateInfo = nil
     }
 
     func refreshPermissions(showOverlayIfNeeded: Bool = true) {
@@ -1893,6 +2031,7 @@ struct ContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
+                updateBanner
                 suggestionBanner
                 controlsBox
                 metadataBox
@@ -2036,6 +2175,8 @@ struct ContentView: View {
             Button("Mikrofone neu laden") { vm.refreshAudioInputs() }
                 .disabled(vm.isRecording)
             Button("Whisper-Modelle prüfen") { vm.refreshWhisperModels() }
+            Button("Nach Updates suchen") { vm.checkForUpdates(showStatus: true) }
+                .disabled(vm.isCheckingForUpdates)
             Divider()
             Button("Output öffnen") { vm.openOutputFolder() }
                 .disabled(vm.outputDir == nil)
@@ -2071,6 +2212,43 @@ struct ContentView: View {
                 }
                 .padding(14)
                 .background(Color.orange.opacity(0.13), in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
+    }
+
+    private var updateBanner: some View {
+        Group {
+            if let updateInfo = vm.updateInfo {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(Color.accentColor)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Neue EchoPilot-Version verfügbar")
+                            .font(.headline)
+                        Text("Installiert: \(GitHubUpdateChecker.currentVersion) · Neu: \(updateInfo.version)")
+                            .foregroundStyle(.secondary)
+                        Text(updateInfo.name)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Release öffnen") { vm.openLatestRelease() }
+                        .buttonStyle(.borderedProminent)
+                    Button("Ausblenden") { vm.dismissUpdateInfo() }
+                }
+                .padding(14)
+                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+            } else if !vm.updateCheckStatus.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: vm.isCheckingForUpdates ? "arrow.triangle.2.circlepath" : "checkmark.circle")
+                        .foregroundStyle(.secondary)
+                    Text(vm.updateCheckStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
             }
         }
     }
