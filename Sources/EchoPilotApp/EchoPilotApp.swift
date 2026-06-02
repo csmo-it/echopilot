@@ -225,15 +225,20 @@ struct WhisperModelInfo: Identifiable, Equatable {
     let installed: Bool
 
     var label: String {
+        label(language: AppSettings.currentLanguage)
+    }
+
+    func label(language: AppLanguage) -> String {
         let hint: String
         switch id {
-        case "turbo": hint = "Apple Silicon schnell"
-        case "small": hint = "Standard/leicht"
-        case "large-v3": hint = "Qualität/langsam"
+        case "turbo": hint = L10n.text("modelHint.turbo", language: language)
+        case "small": hint = L10n.text("modelHint.small", language: language)
+        case "large-v3": hint = L10n.text("modelHint.large", language: language)
         default: hint = ""
         }
         let suffix = hint.isEmpty ? "" : " · \(hint)"
-        return installed ? "\(id) · installiert\(suffix)" : "\(id) · wird beim ersten Lauf geladen\(suffix)"
+        let state = installed ? L10n.text("modelState.installed", language: language) : L10n.text("modelState.download", language: language)
+        return "\(id) · \(state)\(suffix)"
     }
 
     static let knownModelIDs = ["turbo", "small", "medium", "large-v3", "tiny", "base", "large", "large-v2"]
@@ -271,11 +276,15 @@ enum TranscriptPreviewKind: String, CaseIterable, Identifiable, Hashable {
     var id: String { rawValue }
 
     var title: String {
+        title(language: AppSettings.currentLanguage)
+    }
+
+    func title(language: AppLanguage) -> String {
         switch self {
-        case .timeline: return "Timeline"
-        case .kiHandover: return "KI-Handover"
-        case .system: return "Systemaudio"
-        case .microphone: return "Mikrofon"
+        case .timeline: return L10n.text("preview.timeline", language: language)
+        case .kiHandover: return L10n.text("preview.kiHandover", language: language)
+        case .system: return L10n.text("preview.system", language: language)
+        case .microphone: return L10n.text("preview.microphone", language: language)
         }
     }
 
@@ -293,6 +302,9 @@ enum EchoPilotNotifications {
     static let recordingStateChanged = Notification.Name("EchoPilotRecordingStateChanged")
     static let startRecordingRequested = Notification.Name("EchoPilotStartRecordingRequested")
     static let stopRecordingRequested = Notification.Name("EchoPilotStopRecordingRequested")
+    static let checkUpdatesRequested = Notification.Name("EchoPilotCheckUpdatesRequested")
+    static let checkPermissionsRequested = Notification.Name("EchoPilotCheckPermissionsRequested")
+    static let languageChanged = Notification.Name("EchoPilotLanguageChanged")
 }
 
 enum MeetingCallDetector {
@@ -430,11 +442,11 @@ enum AppPermissions {
 
     static var microphoneStatusText: String {
         switch microphoneStatus {
-        case .authorized: return "Freigegeben"
-        case .notDetermined: return "Noch nicht angefragt"
-        case .denied: return "Abgelehnt"
-        case .restricted: return "Eingeschränkt"
-        @unknown default: return "Unbekannt"
+        case .authorized: return L10n.text("permissionStatus.granted")
+        case .notDetermined: return L10n.text("permissionStatus.notRequested")
+        case .denied: return L10n.text("permissionStatus.denied")
+        case .restricted: return L10n.text("permissionStatus.restricted")
+        @unknown default: return L10n.text("permissionStatus.unknown")
         }
     }
 
@@ -448,7 +460,7 @@ enum AppPermissions {
     }
 
     static var screenCaptureStatusText: String {
-        isScreenCaptureGranted ? "Freigegeben" : "Nicht freigegeben"
+        isScreenCaptureGranted ? L10n.text("permissionStatus.granted") : L10n.text("permissionStatus.notGranted")
     }
 
     @MainActor
@@ -698,7 +710,7 @@ final class MeetingCaptureService {
             startedMicRecorder?.stop()
             try? await startedMicRecorder?.finish()
             try? FileManager.default.removeItem(at: session.outputDir)
-            throw RuntimeError("Recording konnte nicht starten: \(error.localizedDescription). Prüfe zusätzlich zu Mikrofon auch Datenschutz → Screen & System Audio Recording für EchoPilot/Xcode.")
+            throw RuntimeError(L10n.format("recording.errorStart", error.localizedDescription))
         }
     }
 
@@ -722,7 +734,7 @@ final class MeetingCaptureService {
         try writeManifest(session: session, system: systemStats, mic: micStats)
         guard systemStats.hasWrittenAudio || micStats.hasWrittenAudio else {
             try? FileManager.default.removeItem(at: session.outputDir)
-            throw RuntimeError("Aufnahme hatte keine Audio-Buffer und wurde verworfen. Prüfe Screen & System Audio Recording sowie Mikrofon-Berechtigung für genau die App, die du startest.")
+            throw RuntimeError(L10n.text("recording.errorEmpty"))
         }
         return session
     }
@@ -793,7 +805,7 @@ final class PostProcessor {
         for session: RecordingSession,
         progress: @escaping @MainActor (Double, String) -> Void
     ) async throws -> PostProcessResult {
-        try await MainActor.run { progress(0.05, "Vorbereitung gestartet…") }
+        try await MainActor.run { progress(0.05, L10n.text("processing.started")) }
         let inputDir = session.outputDir.appendingPathComponent("transcription-input", isDirectory: true)
         try FileManager.default.createDirectory(at: inputDir, withIntermediateDirectories: true)
 
@@ -804,14 +816,14 @@ final class PostProcessor {
             try FileManager.default.removeItem(at: url)
         }
 
-        try await MainActor.run { progress(0.25, "Kopiere Systemaudio…") }
+        try await MainActor.run { progress(0.25, L10n.text("processing.copySystem")) }
         try FileManager.default.copyItem(at: session.systemURL, to: systemDest)
-        try await MainActor.run { progress(0.45, "Kopiere Mikrofonspur…") }
+        try await MainActor.run { progress(0.45, L10n.text("processing.copyMic")) }
         try FileManager.default.copyItem(at: session.micURL, to: micDest)
-        try await MainActor.run { progress(0.60, "Kopiere Manifest…") }
+        try await MainActor.run { progress(0.60, L10n.text("processing.copyManifest")) }
         try FileManager.default.copyItem(at: session.manifestURL, to: manifestDest)
 
-        try await MainActor.run { progress(0.75, "Schreibe Handoff-Dateien…") }
+        try await MainActor.run { progress(0.75, L10n.text("processing.writeHandoff")) }
         let readme = """
         # Transcription Input
 
@@ -852,7 +864,7 @@ final class PostProcessor {
         """
         try notes.write(to: notesInputURL, atomically: true, encoding: .utf8)
 
-        try await MainActor.run { progress(1.0, "Vorbereitung fertig: transcription-input erstellt. Transkription separat starten.") }
+        try await MainActor.run { progress(1.0, L10n.text("processing.progressFinished")) }
         return PostProcessResult(inputDir: inputDir, notesInputURL: notesInputURL)
     }
 }
@@ -878,7 +890,7 @@ final class LocalTranscriber {
             throw RuntimeError("Assemble script not found: \(assembleScript.path)")
         }
 
-        try await MainActor.run { progress(0.05, "Transkription gestartet…") }
+        try await MainActor.run { progress(0.05, L10n.text("transcription.progressStarted")) }
         let inputDir = sessionDir.appendingPathComponent("transcription-input", isDirectory: true)
         let logURL = inputDir.appendingPathComponent("transcription.log")
 
@@ -896,10 +908,10 @@ final class LocalTranscriber {
         } 2>&1 | tee \(shellQuote(logURL.path))
         """
 
-        try await MainActor.run { progress(0.15, "Starte lokales Whisper (\(model), Sprache: \(language)). Erster Lauf kann wegen Installation/Modelldownload dauern…") }
+        try await MainActor.run { progress(0.15, L10n.format("transcription.progressWhisperStart", model, language)) }
         try await runShell(command) { line in
             Task { @MainActor in
-                progress(0.45, "Whisper läuft… \(line)")
+                progress(0.45, L10n.format("transcription.progressWhisperRunning", line))
             }
         }
 
@@ -907,7 +919,7 @@ final class LocalTranscriber {
         guard FileManager.default.fileExists(atPath: notesURL.path) else {
             throw RuntimeError("Transcription finished but meeting-notes-input.md was not created")
         }
-        try await MainActor.run { progress(1.0, "Transkription fertig: meeting-notes-input.md aktualisiert.") }
+        try await MainActor.run { progress(1.0, L10n.text("transcription.progressFinished")) }
         return notesURL
     }
 
@@ -995,12 +1007,13 @@ struct MeetingRecord: Identifiable, Equatable {
     let hasTranscript: Bool
     let hasSummary: Bool
 
-    var subtitle: String {
+    func subtitle(language: AppLanguage = AppSettings.currentLanguage) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .short
         formatter.timeStyle = .short
+        formatter.locale = language == .german ? Locale(identifier: "de_DE") : Locale(identifier: "en_US")
         var parts = [formatter.string(from: createdAt)]
-        if hasTranscript { parts.append("Transkript") }
+        if hasTranscript { parts.append(L10n.text("transcripts.title", language: language)) }
         if hasSummary { parts.append("Summary") }
         return parts.joined(separator: " · ")
     }
@@ -1014,11 +1027,46 @@ struct MeetingMetadata: Codable, Equatable {
     var updatedAt: String
 }
 
+enum AppLanguage: String {
+    case german = "de"
+    case english = "en"
+}
+
+enum AppLanguagePreference: String, CaseIterable, Identifiable {
+    case system
+    case german
+    case english
+
+    var id: String { rawValue }
+
+    var resolvedLanguage: AppLanguage {
+        switch self {
+        case .german:
+            return .german
+        case .english:
+            return .english
+        case .system:
+            let preferred = Locale.preferredLanguages.first?.lowercased() ?? ""
+            return preferred.hasPrefix("de") ? .german : .english
+        }
+    }
+}
+
 enum AppSettings {
     private static let selectedAudioInputIDKey = "selectedAudioInputID"
     private static let whisperModelKey = "whisperModel"
     private static let whisperLanguageKey = "whisperLanguage"
     private static let dismissedUpdateVersionKey = "dismissedUpdateVersion"
+    static let preferredUILanguageKey = "preferredUILanguage"
+
+    static var preferredUILanguage: AppLanguagePreference {
+        get { AppLanguagePreference(rawValue: UserDefaults.standard.string(forKey: preferredUILanguageKey) ?? AppLanguagePreference.system.rawValue) ?? .system }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: preferredUILanguageKey) }
+    }
+
+    static var currentLanguage: AppLanguage {
+        preferredUILanguage.resolvedLanguage
+    }
 
     static var selectedAudioInputID: String? {
         get { UserDefaults.standard.string(forKey: selectedAudioInputIDKey) }
@@ -1045,6 +1093,201 @@ enum AppSettings {
             else { UserDefaults.standard.removeObject(forKey: dismissedUpdateVersionKey) }
         }
     }
+}
+
+enum L10n {
+    static func text(_ key: String, language: AppLanguage = AppSettings.currentLanguage) -> String {
+        translations[key]?[language] ?? translations[key]?[.english] ?? key
+    }
+
+    static func format(_ key: String, language: AppLanguage = AppSettings.currentLanguage, _ args: CVarArg...) -> String {
+        String(format: text(key, language: language), arguments: args)
+    }
+
+    private static let translations: [String: [AppLanguage: String]] = [
+        "language.system": [.german: "Automatisch", .english: "Automatic"],
+        "language.german": [.german: "Deutsch", .english: "German"],
+        "language.english": [.german: "Englisch", .english: "English"],
+        "language.effective": [.german: "Aktiv: %@", .english: "Active: %@"],
+
+        "prefs.title": [.german: "Einstellungen", .english: "Preferences"],
+        "prefs.language": [.german: "Sprache", .english: "Language"],
+        "prefs.language.help": [.german: "Automatisch nutzt Deutsch bei deutscher Systemsprache, sonst Englisch.", .english: "Automatic uses German for German system language and English otherwise."],
+        "prefs.maintenance": [.german: "Wartung", .english: "Maintenance"],
+        "prefs.checkUpdates": [.german: "Nach Updates suchen", .english: "Check for Updates"],
+        "prefs.checkPermissions": [.german: "Berechtigungen prüfen", .english: "Check Permissions"],
+        "prefs.checkUpdates.help": [.german: "Prüft GitHub Releases und zeigt einen Hinweis im Hauptfenster.", .english: "Checks GitHub Releases and shows a notice in the main window."],
+        "prefs.checkPermissions.help": [.german: "Öffnet EchoPilot und prüft Mikrofon sowie Screen/Systemaudio.", .english: "Opens EchoPilot and checks microphone and screen/system audio permissions."],
+
+        "menu.show": [.german: "EchoPilot anzeigen", .english: "Show EchoPilot"],
+        "menu.preferences": [.german: "Einstellungen…", .english: "Preferences…"],
+        "menu.startRecording": [.german: "Aufnahme starten", .english: "Start Recording"],
+        "menu.stopRecording": [.german: "Aufnahme stoppen", .english: "Stop Recording"],
+        "menu.quit": [.german: "Beenden", .english: "Quit"],
+        "tooltip.idle": [.german: "EchoPilot", .english: "EchoPilot"],
+        "tooltip.recording": [.german: "EchoPilot nimmt auf", .english: "EchoPilot is recording"],
+
+        "app.subtitle": [.german: "Native macOS Meeting Capture: Systemaudio + Mikrofon, lokal, ohne Bot.", .english: "Native macOS meeting capture: system audio + microphone, local, no bot."],
+        "sidebar.meetings": [.german: "Meetings", .english: "Meetings"],
+        "sidebar.new.help": [.german: "Neue Aufnahme vorbereiten", .english: "Prepare new recording"],
+        "sidebar.empty.title": [.german: "Noch keine Meetings", .english: "No meetings yet"],
+        "sidebar.empty.subtitle": [.german: "Aufnahmen erscheinen hier automatisch.", .english: "Recordings appear here automatically."],
+
+        "permissions.title": [.german: "EchoPilot Berechtigungen", .english: "EchoPilot Permissions"],
+        "permissions.intro": [.german: "Bitte einmal vor der Aufnahme freigeben. So merken wir Probleme direkt beim Start – nicht erst, wenn du ein Meeting aufzeichnen willst.", .english: "Please grant these once before recording. This catches issues at startup instead of during a meeting."],
+        "permissions.microphone": [.german: "Mikrofon", .english: "Microphone"],
+        "permissions.microphone.explanation": [.german: "Benötigt für deine lokale Spur.", .english: "Required for your local track."],
+        "permissions.microphone.request": [.german: "Mikrofon freigeben", .english: "Allow Microphone"],
+        "permissions.screen": [.german: "Screen & System Audio Recording", .english: "Screen & System Audio Recording"],
+        "permissions.screen.explanation": [.german: "Benötigt für Systemaudio und Meeting-Fenster-Erkennung.", .english: "Required for system audio and meeting-window detection."],
+        "permissions.screen.request": [.german: "Systemaudio freigeben", .english: "Allow System Audio"],
+        "permissions.recheck": [.german: "Erneut prüfen", .english: "Check Again"],
+        "permissions.microphoneSettings": [.german: "Systemeinstellungen: Mikrofon", .english: "System Settings: Microphone"],
+        "permissions.systemAudioSettings": [.german: "Systemeinstellungen: Systemaudio", .english: "System Settings: System Audio"],
+        "permissions.later": [.german: "Später", .english: "Later"],
+        "permissions.done": [.german: "Fertig", .english: "Done"],
+        "permissions.note": [.german: "Hinweis: Nach Screen/Systemaudio-Freigabe verlangt macOS manchmal einen Neustart der App. Danach hier auf „Erneut prüfen“ klicken.", .english: "Note: After granting screen/system audio access, macOS sometimes requires restarting the app. Then click “Check Again”."],
+        "permissions.settings": [.german: "Einstellungen", .english: "Settings"],
+        "permissionStatus.granted": [.german: "Freigegeben", .english: "Granted"],
+        "permissionStatus.notRequested": [.german: "Noch nicht angefragt", .english: "Not requested yet"],
+        "permissionStatus.denied": [.german: "Abgelehnt", .english: "Denied"],
+        "permissionStatus.restricted": [.german: "Eingeschränkt", .english: "Restricted"],
+        "permissionStatus.unknown": [.german: "Unbekannt", .english: "Unknown"],
+        "permissionStatus.notGranted": [.german: "Nicht freigegeben", .english: "Not granted"],
+
+        "meeting.title": [.german: "Meeting", .english: "Meeting"],
+        "meeting.field.title": [.german: "Titel", .english: "Title"],
+        "meeting.field.participants": [.german: "Teilnehmer", .english: "Participants"],
+        "meeting.field.customerProject": [.german: "Kunde / Projekt", .english: "Customer / Project"],
+        "meeting.consent": [.german: "Teilnehmer wurden über Transkript/Meeting Notes informiert", .english: "Participants were informed about transcript/meeting notes"],
+        "meeting.newHint": [.german: "Neue Aufnahme: Titel/Metadaten jetzt vorbereiten; gespeichert wird beim Start der Aufnahme.", .english: "New recording: prepare title/metadata now; it will be saved when recording starts."],
+        "meeting.delete": [.german: "Meeting löschen", .english: "Delete Meeting"],
+
+        "input.title": [.german: "Mikrofon/Input", .english: "Microphone/Input"],
+        "input.microphone": [.german: "Mikrofon", .english: "Microphone"],
+        "transcription.title": [.german: "Transkription", .english: "Transcription"],
+        "transcription.model": [.german: "Modell", .english: "Model"],
+        "transcription.language": [.german: "Sprache", .english: "Language"],
+        "transcription.german": [.german: "Deutsch", .english: "German"],
+        "transcription.english": [.german: "Englisch", .english: "English"],
+        "transcription.auto": [.german: "Auto", .english: "Auto"],
+        "transcription.models.none": [.german: "Installiert: keine erkannt · Modelle werden beim ersten Transkribieren geladen.", .english: "Installed: none detected · models are downloaded on first transcription."],
+        "transcription.models.installed": [.german: "Installiert: %@", .english: "Installed: %@"],
+        "modelHint.turbo": [.german: "Apple Silicon schnell", .english: "fast on Apple Silicon"],
+        "modelHint.small": [.german: "Standard/leicht", .english: "standard/lightweight"],
+        "modelHint.large": [.german: "Qualität/langsam", .english: "quality/slow"],
+        "modelState.installed": [.german: "installiert", .english: "installed"],
+        "modelState.download": [.german: "wird beim ersten Lauf geladen", .english: "downloads on first run"],
+
+        "button.startRecording": [.german: "Aufnahme starten", .english: "Start Recording"],
+        "button.stopRecording": [.german: "Aufnahme stoppen", .english: "Stop Recording"],
+        "button.starting": [.german: "Starte…", .english: "Starting…"],
+        "button.newRecording": [.german: "Neue Aufnahme", .english: "New Recording"],
+        "button.transcribe": [.german: "Transkribieren", .english: "Transcribe"],
+        "button.cancel": [.german: "Abbrechen", .english: "Cancel"],
+        "actions.more": [.german: "Weitere Aktionen", .english: "More Actions"],
+        "actions.checkPermissions": [.german: "Berechtigungen prüfen", .english: "Check Permissions"],
+        "actions.reloadMicrophones": [.german: "Mikrofone neu laden", .english: "Reload Microphones"],
+        "actions.checkWhisperModels": [.german: "Whisper-Modelle prüfen", .english: "Check Whisper Models"],
+        "actions.checkUpdates": [.german: "Nach Updates suchen", .english: "Check for Updates"],
+        "actions.openOutput": [.german: "Output öffnen", .english: "Open Output"],
+        "actions.openTranscriptionInput": [.german: "Transcription-Input öffnen", .english: "Open Transcription Input"],
+        "actions.saveMetadata": [.german: "Metadaten speichern", .english: "Save Metadata"],
+
+        "suggestion.title": [.german: "Möglicher Call erkannt", .english: "Possible Call Detected"],
+        "suggestion.subtitle": [.german: "EchoPilot schlägt nur vor — keine automatische Aufnahme.", .english: "EchoPilot only suggests — no automatic recording."],
+        "suggestion.prepare": [.german: "Aufnahme vorbereiten", .english: "Prepare Recording"],
+        "button.dismiss": [.german: "Ausblenden", .english: "Dismiss"],
+
+        "update.title": [.german: "Neue EchoPilot-Version verfügbar", .english: "New EchoPilot Version Available"],
+        "update.versions": [.german: "Installiert: %@ · Neu: %@", .english: "Installed: %@ · New: %@"],
+        "update.open": [.german: "Release öffnen", .english: "Open Release"],
+
+        "levels.title": [.german: "Live Pegel", .english: "Live Levels"],
+        "levels.system": [.german: "Systemaudio", .english: "System Audio"],
+        "levels.microphone": [.german: "Mikrofon", .english: "Microphone"],
+        "status.recording": [.german: "REC %@", .english: "REC %@"],
+        "status.idle": [.german: "Idle", .english: "Idle"],
+        "status.title": [.german: "Status", .english: "Status"],
+
+        "transcript.statusTitle": [.german: "Transkriptionsstatus", .english: "Transcription Status"],
+        "transcripts.title": [.german: "Transkripte", .english: "Transcripts"],
+        "transcripts.view": [.german: "Ansicht", .english: "View"],
+        "transcripts.openFile": [.german: "Datei öffnen", .english: "Open File"],
+        "transcripts.share": [.german: "Teilen…", .english: "Share…"],
+        "artifacts.title": [.german: "Meeting Notes & Export", .english: "Meeting Notes & Export"],
+        "artifacts.summary": [.german: "Zusammenfassung erstellen", .english: "Create Summary"],
+        "artifacts.shareSummary": [.german: "Summary teilen…", .english: "Share Summary…"],
+        "artifacts.kiExport": [.german: "Für KI-Agent exportieren", .english: "Export for AI Agent"],
+        "artifacts.shareKI": [.german: "KI-Export teilen…", .english: "Share AI Export…"],
+        "consent.title": [.german: "Consent Reminder", .english: "Consent Reminder"],
+        "consent.text": [.german: "Vor echten Meetings klar ansagen: „Ich lasse zur Nachbereitung ein Transkript/Meeting Notes erstellen.“ Keine heimlichen Aufnahmen.", .english: "Before real meetings, clearly say: “I use EchoPilot to create a transcript/meeting notes for follow-up.” No secret recordings."],
+
+        "preview.timeline": [.german: "Timeline", .english: "Timeline"],
+        "preview.kiHandover": [.german: "KI-Handover", .english: "AI Handover"],
+        "preview.system": [.german: "Systemaudio", .english: "System Audio"],
+        "preview.microphone": [.german: "Mikrofon", .english: "Microphone"],
+
+        "status.ready": [.german: "Bereit. Vor echten Meetings Consent/Ansage nicht vergessen.", .english: "Ready. Remember consent/announcement before real meetings."],
+        "status.notChecked": [.german: "Nicht geprüft", .english: "Not checked"],
+        "processing.waiting": [.german: "Vorbereitung wartet auf Aufnahme.", .english: "Preparation is waiting for a recording."],
+        "transcription.notStarted": [.german: "Transkription noch nicht gestartet.", .english: "Transcription not started yet."],
+        "artifact.none": [.german: "Noch keine Meeting-Artefakte erstellt.", .english: "No meeting artifacts created yet."],
+        "update.searching": [.german: "Suche nach Updates…", .english: "Checking for updates…"],
+        "update.available": [.german: "Neue Version verfügbar: %@", .english: "New version available: %@"],
+        "update.current": [.german: "EchoPilot ist aktuell (%@).", .english: "EchoPilot is up to date (%@)."],
+        "update.failed": [.german: "Update-Check fehlgeschlagen: %@", .english: "Update check failed: %@"],
+
+        "status.permissionsRequired": [.german: "Bitte zuerst Mikrofon und Screen/Systemaudio freigeben.", .english: "Please grant microphone and screen/system audio permissions first."],
+        "status.recordingStarted": [.german: "Recording läuft… Systemaudio + Mikrofon werden getrennt gespeichert.", .english: "Recording… system audio and microphone are saved as separate tracks."],
+        "status.startFailed": [.german: "Start fehlgeschlagen: %@", .english: "Start failed: %@"],
+        "recording.errorStart": [.german: "Recording konnte nicht starten: %@. Prüfe zusätzlich zu Mikrofon auch Datenschutz → Screen & System Audio Recording für EchoPilot/Xcode.", .english: "Recording could not start: %@. In addition to microphone access, check Privacy & Security → Screen & System Audio Recording for EchoPilot/Xcode."],
+        "recording.errorEmpty": [.german: "Aufnahme hatte keine Audio-Buffer und wurde verworfen. Prüfe Screen & System Audio Recording sowie Mikrofon-Berechtigung für genau die App, die du startest.", .english: "Recording had no audio buffers and was discarded. Check Screen & System Audio Recording and microphone permissions for the exact app you start."],
+        "status.recordingSaved": [.german: "Recording gespeichert: %@", .english: "Recording saved: %@"],
+        "status.noActiveRecording": [.german: "Keine aktive Aufnahme.", .english: "No active recording."],
+        "status.stopFailed": [.german: "Stop fehlgeschlagen: %@", .english: "Stop failed: %@"],
+        "status.newPrepared": [.german: "Neue Aufnahme vorbereitet.", .english: "New recording prepared."],
+        "status.newArtifactHint": [.german: "Neue Aufnahme vorbereitet. Titel eintragen und Start Recording klicken.", .english: "New recording prepared. Enter a title and click Start Recording."],
+        "status.deleteBusy": [.german: "Löschen nicht möglich während Aufnahme/Verarbeitung läuft.", .english: "Cannot delete while recording/processing is running."],
+        "status.deleteNone": [.german: "Kein Meeting zum Löschen ausgewählt.", .english: "No meeting selected for deletion."],
+        "status.deleted": [.german: "Meeting in den Papierkorb verschoben: %@", .english: "Meeting moved to Trash: %@"],
+        "status.deleteFailed": [.german: "Meeting konnte nicht gelöscht werden: %@", .english: "Meeting could not be deleted: %@"],
+        "status.meetingSelected": [.german: "Meeting ausgewählt: %@", .english: "Meeting selected: %@"],
+        "status.metadataSaved": [.german: "Metadaten gespeichert.", .english: "Metadata saved."],
+        "status.metadataFailed": [.german: "Metadaten konnten nicht gespeichert werden: %@", .english: "Metadata could not be saved: %@"],
+        "status.suggestionPrepared": [.german: "Aufnahme für erkannten Call vorbereitet. Bitte Consent prüfen und Start Recording klicken.", .english: "Recording prepared for detected call. Please verify consent and click Start Recording."],
+        "transcription.noRecording": [.german: "Keine Aufnahme vorhanden.", .english: "No recording available."],
+        "transcription.started": [.german: "Transkription gestartet…", .english: "Transcription started…"],
+        "transcription.finished": [.german: "Fertig: meeting-notes-input.md enthält jetzt Transkripte.", .english: "Done: meeting-notes-input.md now contains transcripts."],
+        "transcription.cancelled": [.german: "Transkription abgebrochen.", .english: "Transcription cancelled."],
+        "transcription.failed": [.german: "Transkription fehlgeschlagen: %@", .english: "Transcription failed: %@"],
+        "transcription.cancelling": [.german: "Transkription wird abgebrochen…", .english: "Cancelling transcription…"],
+        "transcription.previewEmpty": [.german: "Noch kein Transkript geladen. Nach der Transkription erscheint hier die Timeline.", .english: "No transcript loaded yet. The timeline will appear here after transcription."],
+        "transcription.previewMissing": [.german: "Datei noch nicht vorhanden: %@", .english: "File does not exist yet: %@"],
+        "transcription.previewTruncated": [.german: "… gekürzt für die Vorschau. Datei öffnen/teilen für den vollständigen Inhalt.", .english: "… truncated for preview. Open/share the file for the full content."],
+        "transcription.progressStarted": [.german: "Transkription gestartet…", .english: "Transcription started…"],
+        "transcription.progressWhisperStart": [.german: "Starte lokales Whisper (%@, Sprache: %@). Erster Lauf kann wegen Installation/Modelldownload dauern…", .english: "Starting local Whisper (%@, language: %@). First run can take a while because of setup/model download…"],
+        "transcription.progressWhisperRunning": [.german: "Whisper läuft… %@", .english: "Whisper running… %@"],
+        "transcription.progressFinished": [.german: "Transkription fertig: meeting-notes-input.md aktualisiert.", .english: "Transcription finished: meeting-notes-input.md updated."],
+        "artifact.noMeeting": [.german: "Kein Meeting ausgewählt.", .english: "No meeting selected."],
+        "artifact.summaryCreated": [.german: "Summary-Entwurf erstellt: %@", .english: "Summary draft created: %@"],
+        "artifact.summaryFailed": [.german: "Summary fehlgeschlagen: %@", .english: "Summary failed: %@"],
+        "artifact.exportCreated": [.german: "KI-Agent-Export erstellt: %@", .english: "AI-agent export created: %@"],
+        "artifact.exportFailed": [.german: "Export fehlgeschlagen: %@", .english: "Export failed: %@"],
+        "processing.started": [.german: "Vorbereitung gestartet…", .english: "Preparation started…"],
+        "processing.finished": [.german: "Fertig: transcription-input vorbereitet. Transkription ist noch ausstehend.", .english: "Done: transcription-input prepared. Transcription is still pending."],
+        "processing.readyForTranscription": [.german: "Vorbereitung fertig. Bereit für Transkription.", .english: "Preparation complete. Ready for transcription."],
+        "processing.failed": [.german: "Vorbereitung fehlgeschlagen: %@", .english: "Preparation failed: %@"],
+        "processing.copySystem": [.german: "Kopiere Systemaudio…", .english: "Copying system audio…"],
+        "processing.copyMic": [.german: "Kopiere Mikrofonspur…", .english: "Copying microphone track…"],
+        "processing.copyManifest": [.german: "Kopiere Manifest…", .english: "Copying manifest…"],
+        "processing.writeHandoff": [.german: "Schreibe Handoff-Dateien…", .english: "Writing handoff files…"],
+        "processing.progressFinished": [.german: "Vorbereitung fertig: transcription-input erstellt. Transkription separat starten.", .english: "Preparation complete: transcription-input created. Start transcription separately."],
+        "permissionStatus.microphoneGrantedMessage": [.german: "Mikrofon freigegeben.", .english: "Microphone granted."],
+        "permissionStatus.microphoneDeniedMessage": [.german: "Mikrofon nicht freigegeben. Bitte in den Systemeinstellungen prüfen.", .english: "Microphone not granted. Please check System Settings."],
+        "permissionStatus.screenGrantedMessage": [.german: "Screen & System Audio Recording freigegeben.", .english: "Screen & System Audio Recording granted."],
+        "permissionStatus.screenDeniedMessage": [.german: "Screen & System Audio Recording nicht freigegeben. Bitte in den Systemeinstellungen prüfen und EchoPilot neu starten, falls macOS das verlangt.", .english: "Screen & System Audio Recording not granted. Please check System Settings and restart EchoPilot if macOS requires it."],
+    ]
 }
 
 struct UpdateInfo: Equatable {
@@ -1294,7 +1537,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         }
     }
     @Published var isStarting = false
-    @Published var status = "Bereit. Vor echten Meetings Consent/Ansage nicht vergessen."
+    @Published var status = L10n.text("status.ready")
     @Published var outputDir: URL?
     @Published var systemStats = TrackStats()
     @Published var micStats = TrackStats()
@@ -1305,11 +1548,11 @@ final class MeetingCaptureViewModel: ObservableObject {
     }
     @Published var isProcessing = false
     @Published var processingProgress = 0.0
-    @Published var processingStatus = "Vorbereitung wartet auf Aufnahme."
+    @Published var processingStatus = L10n.text("processing.waiting")
     @Published var transcriptionInputDir: URL?
     @Published var isTranscribing = false
     @Published var transcriptionProgress = 0.0
-    @Published var transcriptionStatus = "Transkription noch nicht gestartet."
+    @Published var transcriptionStatus = L10n.text("transcription.notStarted")
     @Published var notesInputURL: URL?
     @Published var meetings: [MeetingRecord] = []
     @Published var selectedMeetingID: String?
@@ -1324,18 +1567,18 @@ final class MeetingCaptureViewModel: ObservableObject {
         didSet { AppSettings.whisperLanguage = whisperLanguage }
     }
     @Published var whisperModels: [WhisperModelInfo] = WhisperModelInfo.available()
-    @Published var artifactStatus = "Noch keine Meeting-Artefakte erstellt."
+    @Published var artifactStatus = L10n.text("artifact.none")
     @Published var summaryURL: URL?
     @Published var kiAgentExportURL: URL?
     @Published var transcriptPreviewKind: TranscriptPreviewKind = .timeline
     @Published var transcriptPreviewTitle = "Timeline"
-    @Published var transcriptPreviewText = "Noch kein Transkript geladen. Nach der Transkription erscheint hier die Timeline."
+    @Published var transcriptPreviewText = L10n.text("transcription.previewEmpty")
     @Published var meetingSuggestion: MeetingSuggestion?
     @Published var showPermissionsOverlay = false
     @Published var microphonePermissionGranted = false
-    @Published var microphonePermissionStatus = "Nicht geprüft"
+    @Published var microphonePermissionStatus = L10n.text("status.notChecked")
     @Published var screenCapturePermissionGranted = false
-    @Published var screenCapturePermissionStatus = "Nicht geprüft"
+    @Published var screenCapturePermissionStatus = L10n.text("status.notChecked")
     @Published var updateInfo: UpdateInfo?
     @Published var isCheckingForUpdates = false
     @Published var updateCheckStatus = ""
@@ -1368,19 +1611,19 @@ final class MeetingCaptureViewModel: ObservableObject {
     func checkForUpdates(showStatus: Bool = true) {
         guard !isCheckingForUpdates else { return }
         isCheckingForUpdates = true
-        if showStatus { updateCheckStatus = "Suche nach Updates…" }
+        if showStatus { updateCheckStatus = L10n.text("update.searching") }
         Task {
             do {
                 let latest = try await GitHubUpdateChecker.checkForUpdate()
                 if let latest, AppSettings.dismissedUpdateVersion != latest.version {
                     updateInfo = latest
-                    updateCheckStatus = "Neue Version verfügbar: \(latest.version)"
+                    updateCheckStatus = L10n.format("update.available", latest.version)
                 } else if showStatus {
-                    updateCheckStatus = "EchoPilot ist aktuell (\(GitHubUpdateChecker.currentVersion))."
+                    updateCheckStatus = L10n.format("update.current", GitHubUpdateChecker.currentVersion)
                 }
             } catch {
                 if showStatus {
-                    updateCheckStatus = "Update-Check fehlgeschlagen: \(error.localizedDescription)"
+                    updateCheckStatus = L10n.format("update.failed", error.localizedDescription)
                 }
             }
             isCheckingForUpdates = false
@@ -1411,16 +1654,37 @@ final class MeetingCaptureViewModel: ObservableObject {
         }
     }
 
+    func refreshLocalizedText() {
+        refreshPermissions(showOverlayIfNeeded: false)
+        if selectedMeetingID == nil && outputDir == nil && !isRecording && !isStarting {
+            status = L10n.text("status.ready")
+        }
+        if !isProcessing && processingProgress == 0 {
+            processingStatus = L10n.text("processing.waiting")
+        }
+        if !isTranscribing && transcriptionProgress == 0 {
+            transcriptionStatus = L10n.text("transcription.notStarted")
+        }
+        if outputDir == nil && summaryURL == nil && kiAgentExportURL == nil {
+            artifactStatus = L10n.text("artifact.none")
+        }
+        if transcriptPreviewText == L10n.text("transcription.previewEmpty", language: .german) || transcriptPreviewText == L10n.text("transcription.previewEmpty", language: .english) {
+            transcriptPreviewText = L10n.text("transcription.previewEmpty")
+        } else if let outputDir, FileManager.default.fileExists(atPath: outputDir.path) {
+            loadTranscriptPreview(transcriptPreviewKind)
+        }
+    }
+
     func requestMicrophonePermission() {
         let granted = AppPermissions.requestMicrophone()
         refreshPermissions(showOverlayIfNeeded: true)
-        status = granted ? "Mikrofon freigegeben." : "Mikrofon nicht freigegeben. Bitte in den Systemeinstellungen prüfen."
+        status = granted ? L10n.text("permissionStatus.microphoneGrantedMessage") : L10n.text("permissionStatus.microphoneDeniedMessage")
     }
 
     func requestScreenCapturePermission() {
         let granted = AppPermissions.requestScreenCapture()
         refreshPermissions(showOverlayIfNeeded: true)
-        status = granted ? "Screen & System Audio Recording freigegeben." : "Screen & System Audio Recording nicht freigegeben. Bitte in den Systemeinstellungen prüfen und EchoPilot neu starten, falls macOS das verlangt."
+        status = granted ? L10n.text("permissionStatus.screenGrantedMessage") : L10n.text("permissionStatus.screenDeniedMessage")
     }
 
     func openMicrophoneSettings() {
@@ -1436,7 +1700,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         refreshPermissions(showOverlayIfNeeded: false)
         guard permissionsReady else {
             showPermissionsOverlay = true
-            status = "Bitte zuerst Mikrofon und Screen/Systemaudio freigeben."
+            status = L10n.text("status.permissionsRequired")
             return
         }
         isStarting = true
@@ -1448,11 +1712,11 @@ final class MeetingCaptureViewModel: ObservableObject {
                 selectedMeetingID = session.outputDir.path
                 saveCurrentMetadata()
                 isRecording = true
-                status = "Recording läuft… Systemaudio + Mikrofon werden getrennt gespeichert."
+                status = L10n.text("status.recordingStarted")
                 meetingSuggestion = nil
                 startTimer()
             } catch {
-                status = "Start fehlgeschlagen: \(error.localizedDescription)"
+                status = L10n.format("status.startFailed", error.localizedDescription)
             }
             isStarting = false
         }
@@ -1467,16 +1731,16 @@ final class MeetingCaptureViewModel: ObservableObject {
                 refreshStats()
                 if let session {
                     outputDir = session.outputDir
-                    status = "Recording gespeichert: \(session.outputDir.path)"
+                    status = L10n.format("status.recordingSaved", session.outputDir.path)
                     saveCurrentMetadata()
                     await postProcess(session: session)
                     refreshMeetings()
                 } else {
-                    status = "Keine aktive Aufnahme."
+                    status = L10n.text("status.noActiveRecording")
                 }
             } catch {
                 isRecording = false
-                status = "Stop fehlgeschlagen: \(error.localizedDescription)"
+                status = L10n.format("status.stopFailed", error.localizedDescription)
             }
         }
     }
@@ -1532,14 +1796,14 @@ final class MeetingCaptureViewModel: ObservableObject {
         kiAgentExportURL = nil
         transcriptPreviewKind = .timeline
         transcriptPreviewTitle = "Timeline"
-        transcriptPreviewText = "Noch kein Transkript geladen. Nach der Transkription erscheint hier die Timeline."
+        transcriptPreviewText = L10n.text("transcription.previewEmpty")
         meetingTitle = ""
         participants = ""
         customerProject = ""
         consentConfirmed = false
-        transcriptionStatus = "Transkription noch nicht gestartet."
-        artifactStatus = "Neue Aufnahme vorbereitet. Titel eintragen und Start Recording klicken."
-        status = "Neue Aufnahme vorbereitet."
+        transcriptionStatus = L10n.text("transcription.notStarted")
+        artifactStatus = L10n.text("status.newArtifactHint")
+        status = L10n.text("status.newPrepared")
         elapsed = 0
         systemStats = TrackStats()
         micStats = TrackStats()
@@ -1547,20 +1811,20 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     func deleteSelectedMeeting() {
         guard !isRecording, !isStarting, !isProcessing, !isTranscribing else {
-            status = "Löschen nicht möglich während Aufnahme/Verarbeitung läuft."
+            status = L10n.text("status.deleteBusy")
             return
         }
         guard let selectedMeetingID, let meeting = meetings.first(where: { $0.id == selectedMeetingID }) else {
-            status = "Kein Meeting zum Löschen ausgewählt."
+            status = L10n.text("status.deleteNone")
             return
         }
         do {
             try MeetingLibrary.trashMeeting(at: meeting.url)
             prepareNewRecording()
             refreshMeetings()
-            status = "Meeting in den Papierkorb verschoben: \(meeting.title)"
+            status = L10n.format("status.deleted", meeting.title)
         } catch {
-            status = "Meeting konnte nicht gelöscht werden: \(error.localizedDescription)"
+            status = L10n.format("status.deleteFailed", error.localizedDescription)
         }
     }
 
@@ -1583,7 +1847,7 @@ final class MeetingCaptureViewModel: ObservableObject {
             consentConfirmed = false
         }
         loadTranscriptPreview(.timeline)
-        status = "Meeting ausgewählt: \(meeting.title)"
+        status = L10n.format("status.meetingSelected", meeting.title)
     }
 
     func transcriptURL(for kind: TranscriptPreviewKind) -> URL? {
@@ -1597,16 +1861,16 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     func loadTranscriptPreview(_ kind: TranscriptPreviewKind) {
         transcriptPreviewKind = kind
-        transcriptPreviewTitle = kind.title
+        transcriptPreviewTitle = kind.title(language: AppSettings.currentLanguage)
         guard let url = transcriptURL(for: kind), FileManager.default.fileExists(atPath: url.path) else {
-            transcriptPreviewText = "\(kind.title) ist noch nicht vorhanden. Bitte erst transkribieren oder Artefakt erzeugen."
+            transcriptPreviewText = L10n.format("transcription.previewMissing", kind.title(language: AppSettings.currentLanguage))
             return
         }
         do {
             let text = try String(contentsOf: url, encoding: .utf8)
             let limit = 220_000
             if text.count > limit {
-                transcriptPreviewText = String(text.prefix(limit)) + "\n\n… gekürzt für die Vorschau. Datei öffnen/teilen für den vollständigen Inhalt."
+                transcriptPreviewText = String(text.prefix(limit)) + "\n\n" + L10n.text("transcription.previewTruncated")
             } else {
                 transcriptPreviewText = text
             }
@@ -1627,10 +1891,10 @@ final class MeetingCaptureViewModel: ObservableObject {
             try MeetingLibrary.saveMetadata(metadata, to: outputDir)
             refreshMeetings()
             if showStatus {
-                status = "Metadaten gespeichert."
+                status = L10n.text("status.metadataSaved")
             }
         } catch {
-            status = "Metadaten konnten nicht gespeichert werden: \(error.localizedDescription)"
+            status = L10n.format("status.metadataFailed", error.localizedDescription)
         }
     }
 
@@ -1644,7 +1908,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         prepareNewRecording()
         if let suggestion {
             meetingTitle = suggestion.detail
-            status = "Aufnahme für erkannten Call vorbereitet. Bitte Consent prüfen und Start Recording klicken."
+            status = L10n.text("status.suggestionPrepared")
         }
         meetingSuggestion = nil
     }
@@ -1652,14 +1916,14 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     func transcribeCurrentRecording() {
         guard let outputDir else {
-            transcriptionStatus = "Keine Aufnahme vorhanden."
+            transcriptionStatus = L10n.text("transcription.noRecording")
             return
         }
         transcriptionTask?.cancel()
         transcriptionTask = Task {
             isTranscribing = true
             transcriptionProgress = 0
-            transcriptionStatus = "Transkription gestartet…"
+            transcriptionStatus = L10n.text("transcription.started")
             do {
                 saveCurrentMetadata()
                 let notesURL = try await LocalTranscriber.transcribe(sessionDir: outputDir, model: whisperModel, language: whisperLanguage) { [weak self] progress, status in
@@ -1668,14 +1932,14 @@ final class MeetingCaptureViewModel: ObservableObject {
                 }
                 notesInputURL = notesURL
                 transcriptionInputDir = notesURL.deletingLastPathComponent()
-                transcriptionStatus = "Fertig: meeting-notes-input.md enthält jetzt Transkripte."
+                transcriptionStatus = L10n.text("transcription.finished")
                 loadTranscriptPreview(.timeline)
                 refreshMeetings()
             } catch {
                 if Task.isCancelled {
-                    transcriptionStatus = "Transkription abgebrochen."
+                    transcriptionStatus = L10n.text("transcription.cancelled")
                 } else {
-                    transcriptionStatus = "Transkription fehlgeschlagen: \(error.localizedDescription)"
+                    transcriptionStatus = L10n.format("transcription.failed", error.localizedDescription)
                 }
             }
             isTranscribing = false
@@ -1685,46 +1949,46 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     func cancelTranscription() {
         transcriptionTask?.cancel()
-        transcriptionStatus = "Transkription wird abgebrochen…"
+        transcriptionStatus = L10n.text("transcription.cancelling")
     }
 
     func generateSummary() {
         guard let outputDir else {
-            artifactStatus = "Kein Meeting ausgewählt."
+            artifactStatus = L10n.text("artifact.noMeeting")
             return
         }
         saveCurrentMetadata()
         do {
             let out = try MeetingArtifactGenerator.generateSummary(sessionDir: outputDir, metadata: currentMetadata())
             summaryURL = out
-            artifactStatus = "Summary-Entwurf erstellt: \(out.lastPathComponent)"
+            artifactStatus = L10n.format("artifact.summaryCreated", out.lastPathComponent)
             refreshMeetings()
         } catch {
-            artifactStatus = "Summary fehlgeschlagen: \(error.localizedDescription)"
+            artifactStatus = L10n.format("artifact.summaryFailed", error.localizedDescription)
         }
     }
 
     func generateKIAgentExport() {
         guard let outputDir else {
-            artifactStatus = "Kein Meeting ausgewählt."
+            artifactStatus = L10n.text("artifact.noMeeting")
             return
         }
         saveCurrentMetadata()
         do {
             let out = try MeetingArtifactGenerator.generateKIAgentExport(sessionDir: outputDir, metadata: currentMetadata())
             kiAgentExportURL = out
-            artifactStatus = "KI-Agent-Export erstellt: \(out.lastPathComponent)"
+            artifactStatus = L10n.format("artifact.exportCreated", out.lastPathComponent)
             NSWorkspace.shared.activateFileViewerSelecting([out])
             refreshMeetings()
         } catch {
-            artifactStatus = "Export fehlgeschlagen: \(error.localizedDescription)"
+            artifactStatus = L10n.format("artifact.exportFailed", error.localizedDescription)
         }
     }
 
     private func postProcess(session: RecordingSession) async {
         isProcessing = true
         processingProgress = 0
-        processingStatus = "Vorbereitung gestartet…"
+        processingStatus = L10n.text("processing.started")
         do {
             let result = try await PostProcessor.prepareTranscriptionInput(for: session) { [weak self] progress, status in
                 self?.processingProgress = progress
@@ -1732,11 +1996,11 @@ final class MeetingCaptureViewModel: ObservableObject {
                 self?.status = status
             }
             transcriptionInputDir = result.inputDir
-            processingStatus = "Fertig: transcription-input vorbereitet. Transkription ist noch ausstehend."
-            status = "Vorbereitung fertig. Bereit für Transkription."
+            processingStatus = L10n.text("processing.finished")
+            status = L10n.text("processing.readyForTranscription")
             notesInputURL = result.notesInputURL
         } catch {
-            processingStatus = "Vorbereitung fehlgeschlagen: \(error.localizedDescription)"
+            processingStatus = L10n.format("processing.failed", error.localizedDescription)
             status = processingStatus
         }
         isProcessing = false
@@ -1837,6 +2101,19 @@ struct LevelMeterView: View {
 
 struct ContentView: View {
     @StateObject private var vm = MeetingCaptureViewModel()
+    @AppStorage(AppSettings.preferredUILanguageKey) private var preferredUILanguage = AppLanguagePreference.system.rawValue
+
+    private var language: AppLanguage {
+        AppLanguagePreference(rawValue: preferredUILanguage)?.resolvedLanguage ?? .english
+    }
+
+    private func text(_ key: String) -> String {
+        L10n.text(key, language: language)
+    }
+
+    private func formatted(_ key: String, _ args: CVarArg...) -> String {
+        String(format: L10n.text(key, language: language), arguments: args)
+    }
 
     var body: some View {
         ZStack {
@@ -1864,6 +2141,17 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.stopRecordingRequested)) { _ in
             vm.stop()
         }
+        .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.checkUpdatesRequested)) { _ in
+            EchoPilotWindowController.shared.showApp()
+            vm.checkForUpdates(showStatus: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.checkPermissionsRequested)) { _ in
+            EchoPilotWindowController.shared.showApp()
+            vm.refreshPermissions(showOverlayIfNeeded: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.languageChanged)) { _ in
+            vm.refreshLocalizedText()
+        }
     }
 
     private var permissionsOverlay: some View {
@@ -1876,29 +2164,29 @@ struct ContentView: View {
                         .font(.largeTitle)
                         .foregroundStyle(Color.accentColor)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("EchoPilot Berechtigungen")
+                        Text(text("permissions.title"))
                             .font(.title2.bold())
-                        Text("Bitte einmal vor der Aufnahme freigeben. So merken wir Probleme direkt beim Start – nicht erst, wenn du ein Meeting aufzeichnen willst.")
+                        Text(text("permissions.intro"))
                             .foregroundStyle(.secondary)
                     }
                 }
 
                 permissionRow(
-                    title: "Mikrofon",
+                    title: text("permissions.microphone"),
                     status: vm.microphonePermissionStatus,
                     granted: vm.microphonePermissionGranted,
-                    explanation: "Benötigt für deine lokale Spur.",
-                    requestTitle: "Mikrofon freigeben",
+                    explanation: text("permissions.microphone.explanation"),
+                    requestTitle: text("permissions.microphone.request"),
                     requestAction: vm.requestMicrophonePermission,
                     settingsAction: vm.openMicrophoneSettings
                 )
 
                 permissionRow(
-                    title: "Screen & System Audio Recording",
+                    title: text("permissions.screen"),
                     status: vm.screenCapturePermissionStatus,
                     granted: vm.screenCapturePermissionGranted,
-                    explanation: "Benötigt für Systemaudio und Meeting-Fenster-Erkennung.",
-                    requestTitle: "Systemaudio freigeben",
+                    explanation: text("permissions.screen.explanation"),
+                    requestTitle: text("permissions.screen.request"),
                     requestAction: vm.requestScreenCapturePermission,
                     settingsAction: vm.openScreenCaptureSettings
                 )
@@ -1906,18 +2194,18 @@ struct ContentView: View {
                 Divider()
 
                 HStack {
-                    Button("Erneut prüfen") { vm.refreshPermissions(showOverlayIfNeeded: true) }
-                    Button("Systemeinstellungen: Mikrofon") { vm.openMicrophoneSettings() }
-                    Button("Systemeinstellungen: Systemaudio") { vm.openScreenCaptureSettings() }
+                    Button(text("permissions.recheck")) { vm.refreshPermissions(showOverlayIfNeeded: true) }
+                    Button(text("permissions.microphoneSettings")) { vm.openMicrophoneSettings() }
+                    Button(text("permissions.systemAudioSettings")) { vm.openScreenCaptureSettings() }
                     Spacer()
-                    Button("Später") { vm.showPermissionsOverlay = false }
-                    Button("Fertig") { vm.refreshPermissions(showOverlayIfNeeded: true) }
+                    Button(text("permissions.later")) { vm.showPermissionsOverlay = false }
+                    Button(text("permissions.done")) { vm.refreshPermissions(showOverlayIfNeeded: true) }
                         .buttonStyle(.borderedProminent)
                         .disabled(!vm.permissionsReady)
                 }
 
                 if !vm.permissionsReady {
-                    Text("Hinweis: Nach Screen/Systemaudio-Freigabe verlangt macOS manchmal einen Neustart der App. Danach hier auf „Erneut prüfen“ klicken.")
+                    Text(text("permissions.note"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -1959,7 +2247,7 @@ struct ContentView: View {
             Spacer()
             Button(requestTitle, action: requestAction)
                 .disabled(granted)
-            Button("Einstellungen", action: settingsAction)
+            Button(text("permissions.settings"), action: settingsAction)
         }
         .padding(14)
         .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
@@ -1968,13 +2256,13 @@ struct ContentView: View {
     private var meetingsSidebar: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Meetings", systemImage: "rectangle.stack")
+                Label(text("sidebar.meetings"), systemImage: "rectangle.stack")
                     .font(.headline)
                 Spacer()
                 Button { vm.prepareNewRecording() } label: {
                     Image(systemName: "plus.circle.fill")
                 }
-                .help("Neue Aufnahme vorbereiten")
+                .help(text("sidebar.new.help"))
                 .buttonStyle(.borderless)
                 Button { vm.refreshMeetings() } label: {
                     Image(systemName: "arrow.clockwise")
@@ -1997,7 +2285,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(meeting.title)
                             .lineLimit(1)
-                        Text(meeting.subtitle)
+                        Text(meeting.subtitle(language: language))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -2008,7 +2296,7 @@ struct ContentView: View {
                             vm.selectedMeetingID = meeting.id
                             vm.deleteSelectedMeeting()
                         } label: {
-                            Label("Meeting löschen", systemImage: "trash")
+                            Label(text("meeting.delete"), systemImage: "trash")
                         }
                     }
                 }
@@ -2019,9 +2307,9 @@ struct ContentView: View {
                         Image(systemName: "waveform")
                             .font(.largeTitle)
                             .foregroundStyle(.secondary)
-                        Text("Noch keine Meetings")
+                        Text(text("sidebar.empty.title"))
                             .font(.headline)
-                        Text("Aufnahmen erscheinen hier automatisch.")
+                        Text(text("sidebar.empty.subtitle"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -2058,7 +2346,7 @@ struct ContentView: View {
             VStack(alignment: .leading) {
                 Text("EchoPilot")
                     .font(.largeTitle.bold())
-                Text("Native macOS Meeting Capture: Systemaudio + Mikrofon, lokal, ohne Bot.")
+                Text(text("app.subtitle"))
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -2068,24 +2356,24 @@ struct ContentView: View {
 
     private var metadataBox: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Meeting", systemImage: "text.badge.checkmark")
+            Label(text("meeting.title"), systemImage: "text.badge.checkmark")
                 .font(.headline)
-            TextField("Titel", text: $vm.meetingTitle)
+            TextField(text("meeting.field.title"), text: $vm.meetingTitle)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { vm.saveCurrentMetadata() }
                 .onChange(of: vm.meetingTitle) { _ in vm.saveCurrentMetadata(showStatus: false) }
-            TextField("Teilnehmer", text: $vm.participants)
+            TextField(text("meeting.field.participants"), text: $vm.participants)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { vm.saveCurrentMetadata() }
                 .onChange(of: vm.participants) { _ in vm.saveCurrentMetadata(showStatus: false) }
-            TextField("Kunde / Projekt", text: $vm.customerProject)
+            TextField(text("meeting.field.customerProject"), text: $vm.customerProject)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { vm.saveCurrentMetadata() }
                 .onChange(of: vm.customerProject) { _ in vm.saveCurrentMetadata(showStatus: false) }
-            Toggle("Teilnehmer wurden über Transkript/Meeting Notes informiert", isOn: $vm.consentConfirmed)
+            Toggle(text("meeting.consent"), isOn: $vm.consentConfirmed)
                 .onChange(of: vm.consentConfirmed) { _ in vm.saveCurrentMetadata(showStatus: false) }
             if vm.outputDir == nil {
-                Text("Neue Aufnahme: Titel/Metadaten jetzt vorbereiten; gespeichert wird beim Start der Aufnahme.")
+                Text(text("meeting.newHint"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -2104,9 +2392,9 @@ struct ContentView: View {
 
     private var inputDevicePicker: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Mikrofon/Input", systemImage: "mic")
+            Label(text("input.title"), systemImage: "mic")
                 .font(.headline)
-            Picker("Mikrofon", selection: Binding(
+            Picker(text("input.microphone"), selection: Binding(
                 get: { vm.selectedAudioInputID ?? "" },
                 set: { vm.selectedAudioInputID = $0.isEmpty ? nil : $0 }
             )) {
@@ -2124,17 +2412,17 @@ struct ContentView: View {
 
     private var transcriptionSettings: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Transkription", systemImage: "gearshape")
+            Label(text("transcription.title"), systemImage: "gearshape")
                 .font(.headline)
-            Picker("Modell", selection: $vm.whisperModel) {
+            Picker(text("transcription.model"), selection: $vm.whisperModel) {
                 ForEach(vm.whisperModels) { model in
-                    Text(model.label).tag(model.id)
+                    Text(model.label(language: language)).tag(model.id)
                 }
             }
-            Picker("Sprache", selection: $vm.whisperLanguage) {
-                Text("Deutsch").tag("de")
-                Text("Englisch").tag("en")
-                Text("Auto").tag("auto")
+            Picker(text("transcription.language"), selection: $vm.whisperLanguage) {
+                Text(text("transcription.german")).tag("de")
+                Text(text("transcription.english")).tag("en")
+                Text(text("transcription.auto")).tag("auto")
             }
             Text(installedModelSummary)
                 .font(.caption)
@@ -2157,14 +2445,14 @@ struct ContentView: View {
             .tint(vm.isRecording ? .red : .accentColor)
             .disabled(vm.isStarting)
 
-            Button("Neue Aufnahme") { vm.prepareNewRecording() }
+            Button(text("button.newRecording")) { vm.prepareNewRecording() }
                 .disabled(vm.isRecording || vm.isStarting)
 
-            Button("Transkribieren") { vm.transcribeCurrentRecording() }
+            Button(text("button.transcribe")) { vm.transcribeCurrentRecording() }
                 .disabled(vm.outputDir == nil || vm.isRecording || vm.isProcessing || vm.isTranscribing)
 
             if vm.isTranscribing {
-                Button("Abbrechen") { vm.cancelTranscription() }
+                Button(text("button.cancel")) { vm.cancelTranscription() }
             }
 
             Spacer()
@@ -2176,25 +2464,25 @@ struct ContentView: View {
 
     private var secondaryActionsMenu: some View {
         Menu {
-            Button("Berechtigungen prüfen") { vm.refreshPermissions(showOverlayIfNeeded: true) }
+            Button(text("actions.checkPermissions")) { vm.refreshPermissions(showOverlayIfNeeded: true) }
                 .disabled(vm.isRecording || vm.isStarting)
-            Button("Mikrofone neu laden") { vm.refreshAudioInputs() }
+            Button(text("actions.reloadMicrophones")) { vm.refreshAudioInputs() }
                 .disabled(vm.isRecording)
-            Button("Whisper-Modelle prüfen") { vm.refreshWhisperModels() }
-            Button("Nach Updates suchen") { vm.checkForUpdates(showStatus: true) }
+            Button(text("actions.checkWhisperModels")) { vm.refreshWhisperModels() }
+            Button(text("actions.checkUpdates")) { vm.checkForUpdates(showStatus: true) }
                 .disabled(vm.isCheckingForUpdates)
             Divider()
-            Button("Output öffnen") { vm.openOutputFolder() }
+            Button(text("actions.openOutput")) { vm.openOutputFolder() }
                 .disabled(vm.outputDir == nil)
-            Button("Transcription-Input öffnen") { vm.openTranscriptionInputFolder() }
+            Button(text("actions.openTranscriptionInput")) { vm.openTranscriptionInputFolder() }
                 .disabled(vm.transcriptionInputDir == nil)
             Divider()
-            Button("Metadaten speichern") { vm.saveCurrentMetadata() }
+            Button(text("actions.saveMetadata")) { vm.saveCurrentMetadata() }
                 .disabled(vm.outputDir == nil)
-            Button("Meeting löschen", role: .destructive) { vm.deleteSelectedMeeting() }
+            Button(text("meeting.delete"), role: .destructive) { vm.deleteSelectedMeeting() }
                 .disabled(vm.selectedMeetingID == nil || vm.isRecording || vm.isStarting || vm.isProcessing || vm.isTranscribing)
         } label: {
-            Label("Weitere Aktionen", systemImage: "ellipsis.circle")
+            Label(text("actions.more"), systemImage: "ellipsis.circle")
         }
         .buttonStyle(.bordered)
     }
@@ -2203,18 +2491,18 @@ struct ContentView: View {
         Group {
             if let suggestion = vm.meetingSuggestion {
                 HStack(alignment: .center, spacing: 12) {
-                    Label("Möglicher Call erkannt", systemImage: "video.badge.waveform")
+                    Label(text("suggestion.title"), systemImage: "video.badge.waveform")
                         .font(.headline)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(suggestion.detail)
                             .lineLimit(1)
-                        Text("EchoPilot schlägt nur vor — keine automatische Aufnahme.")
+                        Text(text("suggestion.subtitle"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Aufnahme vorbereiten") { vm.prepareSuggestedRecording() }
-                    Button("Ausblenden") { vm.dismissMeetingSuggestion() }
+                    Button(text("suggestion.prepare")) { vm.prepareSuggestedRecording() }
+                    Button(text("button.dismiss")) { vm.dismissMeetingSuggestion() }
                 }
                 .padding(14)
                 .background(Color.orange.opacity(0.13), in: RoundedRectangle(cornerRadius: 12))
@@ -2230,18 +2518,18 @@ struct ContentView: View {
                         .font(.title2)
                         .foregroundStyle(Color.accentColor)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Neue EchoPilot-Version verfügbar")
+                        Text(text("update.title"))
                             .font(.headline)
-                        Text("Installiert: \(GitHubUpdateChecker.currentVersion) · Neu: \(updateInfo.version)")
+                        Text(formatted("update.versions", GitHubUpdateChecker.currentVersion, updateInfo.version))
                             .foregroundStyle(.secondary)
                         Text(updateInfo.name)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Release öffnen") { vm.openLatestRelease() }
+                    Button(text("update.open")) { vm.openLatestRelease() }
                         .buttonStyle(.borderedProminent)
-                    Button("Ausblenden") { vm.dismissUpdateInfo() }
+                    Button(text("button.dismiss")) { vm.dismissUpdateInfo() }
                 }
                 .padding(14)
                 .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
@@ -2260,23 +2548,23 @@ struct ContentView: View {
     }
 
     private var recordButtonTitle: String {
-        if vm.isRecording { return "Stop Recording" }
-        if vm.isStarting { return "Starte…" }
-        return "Start Recording"
+        if vm.isRecording { return text("button.stopRecording") }
+        if vm.isStarting { return text("button.starting") }
+        return text("button.startRecording")
     }
 
     private var installedModelSummary: String {
         let installed = vm.whisperModels.filter(\.installed).map(\.id)
-        if installed.isEmpty { return "Installiert: keine erkannt · Modelle werden beim ersten Transkribieren geladen." }
-        return "Installiert: \(installed.joined(separator: ", "))"
+        if installed.isEmpty { return text("transcription.models.none") }
+        return formatted("transcription.models.installed", installed.joined(separator: ", "))
     }
 
     private var levelMeters: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Live Pegel", systemImage: "waveform")
+            Label(text("levels.title"), systemImage: "waveform")
                 .font(.headline)
-            LevelMeterView(title: "Systemaudio", level: vm.systemStats.level, isActive: vm.isRecording)
-            LevelMeterView(title: "Mikrofon", level: vm.micStats.level, isActive: vm.isRecording)
+            LevelMeterView(title: text("levels.system"), level: vm.systemStats.level, isActive: vm.isRecording)
+            LevelMeterView(title: text("levels.microphone"), level: vm.micStats.level, isActive: vm.isRecording)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2285,7 +2573,7 @@ struct ContentView: View {
 
     private var transcriptionProgressBox: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Transkriptionsstatus", systemImage: "text.bubble")
+            Label(text("transcript.statusTitle"), systemImage: "text.bubble")
                 .font(.headline)
             if vm.isTranscribing {
                 ProgressView(value: vm.transcriptionProgress)
@@ -2305,15 +2593,15 @@ struct ContentView: View {
     private var transcriptPreviewBox: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("Transkripte", systemImage: "text.alignleft")
+                Label(text("transcripts.title"), systemImage: "text.alignleft")
                     .font(.headline)
                 Spacer()
-                Picker("Ansicht", selection: Binding(
+                Picker(text("transcripts.view"), selection: Binding(
                     get: { vm.transcriptPreviewKind },
                     set: { vm.loadTranscriptPreview($0) }
                 )) {
                     ForEach(TranscriptPreviewKind.allCases) { kind in
-                        Text(kind.title).tag(kind)
+                        Text(kind.title(language: language)).tag(kind)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -2336,9 +2624,9 @@ struct ContentView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Button("Datei öffnen") { NSWorkspace.shared.open(url) }
+                    Button(text("transcripts.openFile")) { NSWorkspace.shared.open(url) }
                         .disabled(!vm.fileExists(url))
-                    Button("Teilen…") { shareFile(url) }
+                    Button(text("transcripts.share")) { shareFile(url) }
                         .disabled(!vm.fileExists(url))
                 }
             }
@@ -2350,12 +2638,12 @@ struct ContentView: View {
 
     private var artifactBox: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Meeting Notes & Export", systemImage: "doc.text.magnifyingglass")
+            Label(text("artifacts.title"), systemImage: "doc.text.magnifyingglass")
                 .font(.headline)
             HStack(spacing: 12) {
-                Button("Zusammenfassung erstellen") { vm.generateSummary() }
+                Button(text("artifacts.summary")) { vm.generateSummary() }
                     .disabled(vm.outputDir == nil || vm.isRecording || vm.isTranscribing)
-                Button("Summary teilen…") {
+                Button(text("artifacts.shareSummary")) {
                     if let url = vm.shareableURL(vm.summaryURL) { shareFile(url) }
                 }
                 .disabled(vm.shareableURL(vm.summaryURL) == nil)
@@ -2363,9 +2651,9 @@ struct ContentView: View {
                 Divider()
                     .frame(height: 18)
 
-                Button("Für KI-Agent exportieren") { vm.generateKIAgentExport() }
+                Button(text("artifacts.kiExport")) { vm.generateKIAgentExport() }
                     .disabled(vm.outputDir == nil || vm.isRecording || vm.isTranscribing)
-                Button("KI-Export teilen…") {
+                Button(text("artifacts.shareKI")) {
                     if let url = vm.shareableURL(vm.kiAgentExportURL) { shareFile(url) }
                 }
                 .disabled(vm.shareableURL(vm.kiAgentExportURL) == nil)
@@ -2382,7 +2670,7 @@ struct ContentView: View {
 
     private var statusBox: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Status")
+            Text(text("status.title"))
                 .font(.headline)
             Text(vm.status)
                 .font(.callout)
@@ -2401,7 +2689,7 @@ struct ContentView: View {
             Circle()
                 .fill(vm.isRecording ? Color.red : Color.gray)
                 .frame(width: 10, height: 10)
-            Text(vm.isRecording ? "REC \(formatDuration(vm.elapsed))" : "Idle")
+            Text(vm.isRecording ? formatted("status.recording", formatDuration(vm.elapsed)) : text("status.idle"))
                 .font(.headline.monospacedDigit())
         }
         .padding(.horizontal, 12)
@@ -2411,9 +2699,9 @@ struct ContentView: View {
 
     private var consentBox: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("Consent Reminder", systemImage: "exclamationmark.shield")
+            Label(text("consent.title"), systemImage: "exclamationmark.shield")
                 .font(.headline)
-            Text("Vor echten Meetings klar ansagen: „Ich lasse zur Nachbereitung ein Transkript/Meeting Notes erstellen.“ Keine heimlichen Aufnahmen.")
+            Text(text("consent.text"))
                 .foregroundStyle(.secondary)
         }
         .padding(14)
@@ -2434,6 +2722,106 @@ struct ContentView: View {
     private func formatDuration(_ seconds: TimeInterval) -> String {
         let total = max(0, Int(seconds))
         return String(format: "%02d:%02d", total / 60, total % 60)
+    }
+}
+
+struct PreferencesView: View {
+    @AppStorage(AppSettings.preferredUILanguageKey) private var preferredUILanguage = AppLanguagePreference.system.rawValue
+
+    private var languagePreference: AppLanguagePreference {
+        AppLanguagePreference(rawValue: preferredUILanguage) ?? .system
+    }
+
+    private var language: AppLanguage {
+        languagePreference.resolvedLanguage
+    }
+
+    private func text(_ key: String) -> String {
+        L10n.text(key, language: language)
+    }
+
+    private func languageLabel(_ preference: AppLanguagePreference) -> String {
+        switch preference {
+        case .system: return text("language.system")
+        case .german: return text("language.german")
+        case .english: return text("language.english")
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(text("prefs.title"))
+                .font(.title2.bold())
+
+            GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker(text("prefs.language"), selection: $preferredUILanguage) {
+                        ForEach(AppLanguagePreference.allCases) { preference in
+                            Text(languageLabel(preference)).tag(preference.rawValue)
+                        }
+                    }
+                    .pickerStyle(.radioGroup)
+                    .onChange(of: preferredUILanguage) { newValue in
+                        AppSettings.preferredUILanguage = AppLanguagePreference(rawValue: newValue) ?? .system
+                        NotificationCenter.default.post(name: EchoPilotNotifications.languageChanged, object: nil)
+                    }
+
+                    Text(text("prefs.language.help"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(String(format: text("language.effective"), languageLabel(languagePreference.resolvedLanguage == .german ? .german : .english)))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } label: {
+                Label(text("prefs.language"), systemImage: "globe")
+            }
+
+            GroupBox {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Button(text("prefs.checkUpdates")) {
+                            NotificationCenter.default.post(name: EchoPilotNotifications.checkUpdatesRequested, object: nil)
+                        }
+                        Text(text("prefs.checkUpdates.help"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack(alignment: .top, spacing: 12) {
+                        Button(text("prefs.checkPermissions")) {
+                            NotificationCenter.default.post(name: EchoPilotNotifications.checkPermissionsRequested, object: nil)
+                        }
+                        Text(text("prefs.checkPermissions.help"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } label: {
+                Label(text("prefs.maintenance"), systemImage: "wrench.and.screwdriver")
+            }
+        }
+        .padding(24)
+        .frame(width: 460)
+    }
+}
+
+struct EchoPilotCommands: Commands {
+    @AppStorage(AppSettings.preferredUILanguageKey) private var preferredUILanguage = AppLanguagePreference.system.rawValue
+
+    private var language: AppLanguage {
+        AppLanguagePreference(rawValue: preferredUILanguage)?.resolvedLanguage ?? .english
+    }
+
+    var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button(L10n.text("menu.preferences", language: language)) {
+                EchoPilotWindowController.shared.showApp()
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
+            .keyboardShortcut(",", modifiers: .command)
+        }
     }
 }
 
@@ -2485,9 +2873,10 @@ final class EchoPilotStatusBarController: NSObject {
     static let shared = EchoPilotStatusBarController()
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    private let showItem = NSMenuItem(title: "EchoPilot anzeigen", action: #selector(showApp), keyEquivalent: "")
-    private let recordingItem = NSMenuItem(title: "Aufnahme starten", action: #selector(toggleRecording), keyEquivalent: "")
-    private let quitItem = NSMenuItem(title: "Beenden", action: #selector(quitApp), keyEquivalent: "q")
+    private let showItem = NSMenuItem(title: "", action: #selector(showApp), keyEquivalent: "")
+    private let preferencesItem = NSMenuItem(title: "", action: #selector(openPreferences), keyEquivalent: ",")
+    private let recordingItem = NSMenuItem(title: "", action: #selector(toggleRecording), keyEquivalent: "")
+    private let quitItem = NSMenuItem(title: "", action: #selector(quitApp), keyEquivalent: "q")
     private var blinkTimer: Timer?
     private var isRecording = false
     private var blinkOn = true
@@ -2504,6 +2893,12 @@ final class EchoPilotStatusBarController: NSObject {
             name: EchoPilotNotifications.recordingStateChanged,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(languageChanged(_:)),
+            name: EchoPilotNotifications.languageChanged,
+            object: nil
+        )
     }
 
     func start() {
@@ -2518,11 +2913,14 @@ final class EchoPilotStatusBarController: NSObject {
 
         let menu = NSMenu()
         menu.addItem(showItem)
+        menu.addItem(preferencesItem)
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(recordingItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(quitItem)
         menu.items.forEach { $0.target = self }
         statusItem.menu = menu
+        updateLocalizedMenuItems()
         updateRecordingMenuItem()
     }
 
@@ -2534,6 +2932,19 @@ final class EchoPilotStatusBarController: NSObject {
         } else {
             stopBlinking()
         }
+    }
+
+    @objc private func languageChanged(_ notification: Notification) {
+        updateLocalizedMenuItems()
+        updateRecordingMenuItem()
+        updateIcon()
+    }
+
+    private func updateLocalizedMenuItems() {
+        let language = AppSettings.currentLanguage
+        showItem.title = L10n.text("menu.show", language: language)
+        preferencesItem.title = L10n.text("menu.preferences", language: language)
+        quitItem.title = L10n.text("menu.quit", language: language)
     }
 
     private func startBlinking() {
@@ -2556,11 +2967,13 @@ final class EchoPilotStatusBarController: NSObject {
 
     private func updateIcon() {
         statusItem.button?.image = isRecording && blinkOn ? recordingImage : normalImage
-        statusItem.button?.toolTip = isRecording ? "EchoPilot nimmt auf" : "EchoPilot"
+        let language = AppSettings.currentLanguage
+        statusItem.button?.toolTip = isRecording ? L10n.text("tooltip.recording", language: language) : L10n.text("tooltip.idle", language: language)
     }
 
     private func updateRecordingMenuItem() {
-        recordingItem.title = isRecording ? "Aufnahme stoppen" : "Aufnahme starten"
+        let language = AppSettings.currentLanguage
+        recordingItem.title = isRecording ? L10n.text("menu.stopRecording", language: language) : L10n.text("menu.startRecording", language: language)
         recordingItem.image = NSImage(systemSymbolName: isRecording ? "stop.circle.fill" : "record.circle", accessibilityDescription: recordingItem.title)
     }
 
@@ -2575,6 +2988,11 @@ final class EchoPilotStatusBarController: NSObject {
 
     @objc func showApp() {
         EchoPilotWindowController.shared.showApp()
+    }
+
+    @objc private func openPreferences() {
+        EchoPilotWindowController.shared.showApp()
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 
     @objc private func toggleRecording() {
@@ -2627,6 +3045,13 @@ struct EchoPilotApp: App {
                 }
         }
         .windowStyle(.titleBar)
+
+        Settings {
+            PreferencesView()
+        }
+        .commands {
+            EchoPilotCommands()
+        }
     }
 }
 
