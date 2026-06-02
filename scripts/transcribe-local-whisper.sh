@@ -151,6 +151,12 @@ fi
 CURRENT_DEVICE="$WHISPER_DEVICE"
 CURRENT_FP16="$WHISPER_FP16"
 
+if [[ -z "$NORMALIZED_LANGUAGE" && "$CURRENT_DEVICE" == "mps" ]]; then
+  echo "Auto language detection is more reliable on CPU; using CPU for this auto-language transcription run." >&2
+  CURRENT_DEVICE="cpu"
+  CURRENT_FP16="False"
+fi
+
 printf 'EchoPilot Whisper settings:\n'
 printf '  model:  %s\n' "$MODEL"
 if [[ -n "$NORMALIZED_LANGUAGE" ]]; then

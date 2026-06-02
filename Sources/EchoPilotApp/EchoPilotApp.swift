@@ -879,15 +879,20 @@ final class LocalTranscriber {
 
         try await MainActor.run { progress(0.05, "Transkription gestartet…") }
         let inputDir = sessionDir.appendingPathComponent("transcription-input", isDirectory: true)
+        let logURL = inputDir.appendingPathComponent("transcription.log")
 
         let command = """
         set -euo pipefail
         export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
         cd \(shellQuote(repoRoot.path))
+        mkdir -p \(shellQuote(inputDir.path))
         export WHISPER_MODEL=\(shellQuote(model))
         export WHISPER_LANGUAGE=\(shellQuote(language))
-        scripts/transcribe-local-whisper.sh \(shellQuote(sessionDir.path))
-        scripts/assemble-meeting-notes.sh \(shellQuote(inputDir.path))
+        {
+          date
+          scripts/transcribe-local-whisper.sh \(shellQuote(sessionDir.path))
+          scripts/assemble-meeting-notes.sh \(shellQuote(inputDir.path))
+        } 2>&1 | tee \(shellQuote(logURL.path))
         """
 
         try await MainActor.run { progress(0.15, "Starte lokales Whisper (\(model), Sprache: \(language)). Erster Lauf kann wegen Installation/Modelldownload dauern…") }
@@ -951,7 +956,10 @@ final class LocalTranscriber {
                     if proc.terminationStatus == 0 {
                         continuation.resume()
                     } else {
-                        let message = output.isEmpty ? "Transcription process failed with exit \(proc.terminationStatus)" : output
+                        let tail = Self.tailLines(output, limit: 36)
+                        let message = tail.isEmpty
+                            ? "Transcription process failed with exit \(proc.terminationStatus)"
+                            : "Transcription process failed with exit \(proc.terminationStatus). Last output:\n\(tail)"
                         continuation.resume(throwing: RuntimeError(message))
                     }
                 }
@@ -966,6 +974,11 @@ final class LocalTranscriber {
         }, onCancel: {
             runningProcess.terminate()
         })
+    }
+
+    private static func tailLines(_ text: String, limit: Int) -> String {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        return lines.suffix(limit).map(String.init).joined(separator: "\n")
     }
 
     private static func shellQuote(_ value: String) -> String {
@@ -2259,7 +2272,14 @@ final class EchoPilotWindowController: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         attachToExistingWindows()
 
-        if let window = NSApp.windows.first(where: { !$0.isMiniaturized }) ?? NSApp.windows.first {
+        let restorableWindows = NSApp.windows.filter { window in
+            window.canBecomeKey || window.isMiniaturized || window.isVisible
+        }
+        for window in restorableWindows where window.isMiniaturized {
+            window.deminiaturize(nil)
+        }
+
+        if let window = restorableWindows.first(where: { $0.canBecomeKey }) ?? restorableWindows.first {
             if window.isMiniaturized {
                 window.deminiaturize(nil)
             }
@@ -2270,6 +2290,8 @@ final class EchoPilotWindowController: NSObject, NSWindowDelegate {
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         // Keep the SwiftUI window alive so the menu-bar item can bring it back.
+        // This mirrors the yellow minimize button behavior, but without leaving
+        // AppKit with a destroyed SwiftUI window scene.
         sender.orderOut(nil)
         return false
     }
