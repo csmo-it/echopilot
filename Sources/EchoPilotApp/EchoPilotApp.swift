@@ -4,6 +4,7 @@ import AVFoundation
 import CoreMedia
 import CoreMediaIO
 import AppKit
+import ApplicationServices
 import AudioToolbox
 import Foundation
 import UserNotifications
@@ -100,9 +101,9 @@ enum AudioLevelMeter {
 
     static func smooth(previous: Float, measured: Float) -> Float {
         if measured > previous {
-            return previous * 0.25 + measured * 0.75
+            return previous * 0.15 + measured * 0.85
         }
-        return previous * 0.72 + measured * 0.28
+        return previous * 0.52 + measured * 0.48
     }
 }
 
@@ -267,6 +268,8 @@ struct WhisperModelInfo: Identifiable, Equatable {
 struct MeetingSuggestion: Equatable {
     let appName: String
     let detail: String
+    var title: String? = nil
+    var participants: [String] = []
 }
 
 struct MeetingDeviceStatus: Equatable {
@@ -340,6 +343,9 @@ enum MeetingCallDetector {
     }
 
     static func detectMeetingContext() async -> MeetingSuggestion? {
+        if let teamsAXSuggestion = await detectTeamsCallFromAccessibility() {
+            return teamsAXSuggestion
+        }
         if let teamsLogSuggestion = detectTeamsCallFromLogs() {
             return teamsLogSuggestion
         }
@@ -384,6 +390,127 @@ enum MeetingCallDetector {
         }
 
         return nil
+    }
+
+    private static func detectTeamsCallFromAccessibility() async -> MeetingSuggestion? {
+        await Task.detached(priority: .utility) {
+            detectTeamsCallFromAccessibilitySync()
+        }.value
+    }
+
+    private static func detectTeamsCallFromAccessibilitySync() -> MeetingSuggestion? {
+        guard AXIsProcessTrusted() else { return nil }
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.microsoft.teams2").first else { return nil }
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+
+        var meetingWindow: AXUIElement?
+        for _ in 0..<8 {
+            if let window = teamsMeetingWindow(in: axApp) {
+                meetingWindow = window
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.12)
+        }
+        guard let meetingWindow else { return nil }
+
+        let title = teamsMeetingTitle(from: meetingWindow)
+        let participantNames = teamsParticipantNames(in: meetingWindow)
+        let detail: String
+        if let title, !title.isEmpty {
+            detail = title
+        } else if !participantNames.isEmpty {
+            detail = participantNames.joined(separator: ", ")
+        } else {
+            detail = "Microsoft Teams"
+        }
+        return MeetingSuggestion(appName: "Microsoft Teams", detail: detail, title: title, participants: participantNames)
+    }
+
+    private static func teamsMeetingWindow(in app: AXUIElement) -> AXUIElement? {
+        guard let windows = axAttribute(app, kAXWindowsAttribute as String) as? [AXUIElement] else { return nil }
+        let meetingMarkers = ["Besprechungssteuerung", "Verstrichene Zeit", "Meeting controls", "Elapsed time"]
+        for window in windows where axTreeContainsText(window, markers: meetingMarkers, maxDepth: 34) {
+            return window
+        }
+        return nil
+    }
+
+    private static func teamsMeetingTitle(from window: AXUIElement) -> String? {
+        let rawTitle = axString(window, kAXTitleAttribute as String).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawTitle.isEmpty else { return nil }
+        let viewLabels = ["Kompakte Besprechungsansicht", "Compact meeting view", "Besprechungsansicht", "Meeting view"]
+        let segments = rawTitle.components(separatedBy: " | ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return segments.first { !viewLabels.contains($0) } ?? segments.first ?? rawTitle
+    }
+
+    private static func teamsParticipantNames(in window: AXUIElement) -> [String] {
+        let leadingPrefixes = [
+            "Video von mir selbst, ", "Video von ", "Video ist aus, ", "Video ist ein, ",
+            "Video from me, ", "Video from ", "Video is off, ", "Video is on, "
+        ]
+        let trailingSeparators = [
+            ", Video ist", ", Stummschaltung", ", Kontextmenü", ", Hat Kontextmenü", ", Frame", ", spricht", ", Bildschirm",
+            ", video is", ", muted", ", unmuted", ", context menu", ", has context menu", ", speaking", ", screen", ", your video"
+        ]
+        let nameMarkers = ["Video von", "Video ist ein", "Video ist aus", "Video from", "video is on", "video is off"]
+        var names: [String] = []
+
+        func addName(from raw: String) {
+            var name = raw
+            for prefix in leadingPrefixes where name.hasPrefix(prefix) {
+                name = String(name.dropFirst(prefix.count))
+                break
+            }
+            for separator in trailingSeparators {
+                if let range = name.range(of: separator) {
+                    name = String(name[..<range.lowerBound])
+                    break
+                }
+            }
+            name = name.trimmingCharacters(in: CharacterSet(charactersIn: " ,"))
+            guard !name.isEmpty, !names.contains(name) else { return }
+            names.append(name)
+        }
+
+        func scan(_ element: AXUIElement, depth: Int) {
+            guard depth <= 40 else { return }
+            let role = axString(element, kAXRoleAttribute as String)
+            if role == "AXImage" || role == "AXMenuItem" {
+                let description = axString(element, kAXDescriptionAttribute as String)
+                let title = axString(element, kAXTitleAttribute as String)
+                let text = description.isEmpty ? title : description
+                if nameMarkers.contains(where: { text.contains($0) }) {
+                    addName(from: text)
+                }
+            }
+            if let children = axAttribute(element, kAXChildrenAttribute as String) as? [AXUIElement] {
+                for child in children { scan(child, depth: depth + 1) }
+            }
+        }
+
+        scan(window, depth: 0)
+        return names
+    }
+
+    private static func axTreeContainsText(_ element: AXUIElement, markers: [String], maxDepth: Int, depth: Int = 0) -> Bool {
+        guard depth <= maxDepth else { return false }
+        let text = axString(element, kAXTitleAttribute as String) + " ¦ " + axString(element, kAXDescriptionAttribute as String)
+        if markers.contains(where: { text.contains($0) }) { return true }
+        guard let children = axAttribute(element, kAXChildrenAttribute as String) as? [AXUIElement] else { return false }
+        return children.contains { axTreeContainsText($0, markers: markers, maxDepth: maxDepth, depth: depth + 1) }
+    }
+
+    private static func axAttribute(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
+        return value
+    }
+
+    private static func axString(_ element: AXUIElement, _ attribute: String) -> String {
+        axAttribute(element, attribute) as? String ?? ""
     }
 
     private static func activeMicrophoneNames() -> [String] {
@@ -2153,11 +2280,15 @@ final class MeetingCaptureViewModel: ObservableObject {
             meetingTitle = title
             status = L10n.text("status.suggestionPrepared")
         }
+        if let participantList = suggestion?.participants, !participantList.isEmpty {
+            participants = participantList.joined(separator: ", ")
+        }
         meetingSuggestion = nil
     }
 
     private func suggestedMeetingTitle(from suggestion: MeetingSuggestion?) -> String? {
         guard let suggestion else { return nil }
+        if let title = suggestion.title, !title.isEmpty { return title }
         if suggestion.detail.contains(":") { return suggestion.detail }
         if suggestion.appName != "Meeting", suggestion.appName != "Meeting-App" { return suggestion.appName }
         return nil
@@ -2447,7 +2578,7 @@ final class LevelMeterNSView: NSView {
     private func startTimer() {
         stopTimer()
         refreshLevel()
-        let timer = Timer(timeInterval: 0.12, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             self?.refreshLevel()
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -2462,9 +2593,8 @@ final class LevelMeterNSView: NSView {
     private func refreshLevel() {
         let rawLevel = levelProvider?() ?? 0
         let clamped = max(0, min(1, rawLevel))
-        let quantized = (clamped * 50).rounded() / 50
-        guard abs(quantized - currentLevel) >= 0.01 else { return }
-        render(level: quantized)
+        guard abs(clamped - currentLevel) >= 0.003 else { return }
+        render(level: clamped)
     }
 
     private func render(level: Float) {
@@ -2475,7 +2605,7 @@ final class LevelMeterNSView: NSView {
         fillLayer.frame = NSRect(
             x: 0,
             y: 0,
-            width: max(4, bounds.width * CGFloat(level)),
+            width: level > 0 ? max(2, bounds.width * CGFloat(level)) : 0,
             height: bounds.height
         )
         CATransaction.commit()
