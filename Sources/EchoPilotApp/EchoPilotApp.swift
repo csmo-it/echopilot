@@ -3721,7 +3721,12 @@ final class EchoPilotAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         EchoPilotWindowController.shared.showApp()
-        return true
+        // `showApp()` restores the hidden SwiftUI window itself. Returning true lets
+        // AppKit/SwiftUI perform the default WindowGroup reopen as well, which can
+        // create a duplicate window after closing via the red traffic-light button
+        // and reopening from the Dock. The status-bar item never hit that default
+        // reopen path, which is why it only restored one window.
+        return false
     }
 }
 
