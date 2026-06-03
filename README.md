@@ -26,10 +26,12 @@ It is designed for local-first meeting workflows: record only after consent, tra
 
 - macOS with ScreenCaptureKit support
 - Xcode for building from source
-- Homebrew `ffmpeg` for local transcription
+- Homebrew and `ffmpeg` for local transcription
 - Python 3 for the Whisper helper environment
 
-Install ffmpeg:
+EchoPilot checks Homebrew and FFmpeg at startup. If either tool is missing, the in-app setup panel offers install buttons that open the matching Homebrew commands in Terminal so the user can review and approve the installation.
+
+Manual FFmpeg install:
 
 ```bash
 brew install ffmpeg

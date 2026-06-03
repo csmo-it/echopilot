@@ -731,6 +731,104 @@ enum AppPermissions {
     }
 }
 
+enum AppDependencies {
+    static var homebrewPath: String? {
+        executablePath(named: "brew", candidates: ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"])
+    }
+
+    static var ffmpegPath: String? {
+        executablePath(named: "ffmpeg", candidates: ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"])
+    }
+
+    static var isHomebrewInstalled: Bool { homebrewPath != nil }
+    static var isFFmpegInstalled: Bool { ffmpegPath != nil }
+
+    static func openHomebrewInstallTerminal() {
+        openTerminalScript(
+            basename: "install-homebrew",
+            body: """
+            #!/bin/bash
+            set -e
+            export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+            echo "EchoPilot dependency setup"
+            echo "Installing Homebrew if it is missing..."
+            if command -v brew >/dev/null 2>&1; then
+              echo "Homebrew already installed: $(command -v brew)"
+            else
+              /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            fi
+            echo
+            echo "Done. Return to EchoPilot and click Check Again."
+            read -n 1 -s -r -p "Press any key to close this window..."
+            """
+        )
+    }
+
+    static func openFFmpegInstallTerminal() {
+        openTerminalScript(
+            basename: "install-ffmpeg",
+            body: """
+            #!/bin/bash
+            set -e
+            export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+            echo "EchoPilot dependency setup"
+            if ! command -v brew >/dev/null 2>&1; then
+              echo "Homebrew is required before FFmpeg can be installed."
+              echo "Install Homebrew first, then run this again."
+              read -n 1 -s -r -p "Press any key to close this window..."
+              exit 1
+            fi
+            echo "Installing FFmpeg via Homebrew..."
+            brew install ffmpeg
+            echo
+            echo "Done. Return to EchoPilot and click Check Again."
+            read -n 1 -s -r -p "Press any key to close this window..."
+            """
+        )
+    }
+
+    private static func executablePath(named name: String, candidates: [String]) -> String? {
+        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
+            return path
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+        process.arguments = [name]
+        process.environment = [
+            "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        ]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return nil }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let path, !path.isEmpty, FileManager.default.isExecutableFile(atPath: path) {
+                return path
+            }
+        } catch {
+            return nil
+        }
+        return nil
+    }
+
+    private static func openTerminalScript(basename: String, body: String) {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("echopilot-\(basename)-\(Int(Date().timeIntervalSince1970)).command")
+        do {
+            try body.write(to: url, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+            NSWorkspace.shared.open(url)
+        } catch {
+            fputs("Failed to open EchoPilot dependency installer: \(error.localizedDescription)\n", stderr)
+        }
+    }
+}
+
 enum EchoPilotUserNotifier {
     static func requestAuthorization() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
@@ -1413,9 +1511,9 @@ enum L10n {
         "prefs.language.help": [.german: "Automatisch nutzt Deutsch bei deutscher Systemsprache, sonst Englisch.", .english: "Automatic uses German for German system language and English otherwise."],
         "prefs.maintenance": [.german: "Wartung", .english: "Maintenance"],
         "prefs.checkUpdates": [.german: "Nach Updates suchen", .english: "Check for Updates"],
-        "prefs.checkPermissions": [.german: "Berechtigungen prüfen", .english: "Check Permissions"],
+        "prefs.checkPermissions": [.german: "Setup prüfen", .english: "Check Setup"],
         "prefs.checkUpdates.help": [.german: "Prüft GitHub Releases und zeigt einen Hinweis im Hauptfenster.", .english: "Checks GitHub Releases and shows a notice in the main window."],
-        "prefs.checkPermissions.help": [.german: "Öffnet EchoPilot und prüft Mikrofon sowie Screen/Systemaudio.", .english: "Opens EchoPilot and checks microphone and screen/system audio permissions."],
+        "prefs.checkPermissions.help": [.german: "Öffnet EchoPilot und prüft Mikrofon, Screen/Systemaudio, Homebrew und FFmpeg.", .english: "Opens EchoPilot and checks microphone, screen/system audio, Homebrew, and FFmpeg."],
 
         "menu.show": [.german: "EchoPilot anzeigen", .english: "Show EchoPilot"],
         "menu.preferences": [.german: "Einstellungen…", .english: "Preferences…"],
@@ -1441,8 +1539,8 @@ enum L10n {
         "status.unarchived": [.german: "Meeting aus Archiv zurückgeholt: %@", .english: "Meeting unarchived: %@"],
         "status.archiveFailed": [.german: "Archivierung fehlgeschlagen: %@", .english: "Archive update failed: %@"],
 
-        "permissions.title": [.german: "EchoPilot Berechtigungen", .english: "EchoPilot Permissions"],
-        "permissions.intro": [.german: "Bitte einmal vor der Aufnahme freigeben. So merken wir Probleme direkt beim Start – nicht erst, wenn du ein Meeting aufzeichnen willst.", .english: "Please grant these once before recording. This catches issues at startup instead of during a meeting."],
+        "permissions.title": [.german: "EchoPilot Setup", .english: "EchoPilot Setup"],
+        "permissions.intro": [.german: "Bitte einmal vor der Nutzung prüfen. So merken wir fehlende Berechtigungen oder Tools direkt beim Start – nicht erst, wenn du ein Meeting aufzeichnen willst.", .english: "Please check these once before using EchoPilot. This catches missing permissions or tools at startup instead of during a meeting."],
         "permissions.microphone": [.german: "Mikrofon", .english: "Microphone"],
         "permissions.microphone.explanation": [.german: "Benötigt für deine lokale Spur.", .english: "Required for your local track."],
         "permissions.microphone.request": [.german: "Mikrofon freigeben", .english: "Allow Microphone"],
@@ -1454,8 +1552,16 @@ enum L10n {
         "permissions.systemAudioSettings": [.german: "Systemeinstellungen: Systemaudio", .english: "System Settings: System Audio"],
         "permissions.later": [.german: "Später", .english: "Later"],
         "permissions.done": [.german: "Fertig", .english: "Done"],
-        "permissions.note": [.german: "Hinweis: Nach Screen/Systemaudio-Freigabe verlangt macOS manchmal einen Neustart der App. Danach hier auf „Erneut prüfen“ klicken.", .english: "Note: After granting screen/system audio access, macOS sometimes requires restarting the app. Then click “Check Again”."],
+        "permissions.note": [.german: "Hinweis: Nach Screen/Systemaudio-Freigabe oder Tool-Installation verlangt macOS bzw. Terminal manchmal einen Neustart der App. Danach hier auf „Erneut prüfen“ klicken.", .english: "Note: After granting screen/system audio access or installing tools, macOS/Terminal may require restarting the app. Then click “Check Again”."],
         "permissions.settings": [.german: "Einstellungen", .english: "Settings"],
+        "dependencies.homebrew": [.german: "Homebrew", .english: "Homebrew"],
+        "dependencies.homebrew.explanation": [.german: "Benötigt, um FFmpeg direkt aus EchoPilot heraus installieren zu können.", .english: "Required to install FFmpeg directly from EchoPilot."],
+        "dependencies.homebrew.install": [.german: "Homebrew installieren", .english: "Install Homebrew"],
+        "dependencies.ffmpeg": [.german: "FFmpeg", .english: "FFmpeg"],
+        "dependencies.ffmpeg.explanation": [.german: "Benötigt für lokale Transkription und Audio-Verarbeitung.", .english: "Required for local transcription and audio processing."],
+        "dependencies.ffmpeg.install": [.german: "FFmpeg installieren", .english: "Install FFmpeg"],
+        "dependencyStatus.installedAt": [.german: "Installiert: %@", .english: "Installed: %@"],
+        "dependencyStatus.missing": [.german: "Fehlt", .english: "Missing"],
         "permissionStatus.granted": [.german: "Freigegeben", .english: "Granted"],
         "permissionStatus.notRequested": [.german: "Noch nicht angefragt", .english: "Not requested yet"],
         "permissionStatus.denied": [.german: "Abgelehnt", .english: "Denied"],
@@ -1494,7 +1600,7 @@ enum L10n {
         "button.transcribe": [.german: "Transkribieren", .english: "Transcribe"],
         "button.cancel": [.german: "Abbrechen", .english: "Cancel"],
         "actions.more": [.german: "Weitere Aktionen", .english: "More Actions"],
-        "actions.checkPermissions": [.german: "Berechtigungen prüfen", .english: "Check Permissions"],
+        "actions.checkPermissions": [.german: "Setup prüfen", .english: "Check Setup"],
         "actions.reloadMicrophones": [.german: "Mikrofone neu laden", .english: "Reload Microphones"],
         "actions.checkWhisperModels": [.german: "Whisper-Modelle prüfen", .english: "Check Whisper Models"],
         "actions.checkUpdates": [.german: "Nach Updates suchen", .english: "Check for Updates"],
@@ -1553,6 +1659,9 @@ enum L10n {
         "update.failed": [.german: "Update-Check fehlgeschlagen: %@", .english: "Update check failed: %@"],
 
         "status.permissionsRequired": [.german: "Bitte zuerst Mikrofon und Screen/Systemaudio freigeben.", .english: "Please grant microphone and screen/system audio permissions first."],
+        "status.dependenciesRequired": [.german: "Bitte zuerst FFmpeg installieren, dann erneut transkribieren.", .english: "Please install FFmpeg first, then transcribe again."],
+        "status.homebrewInstallOpened": [.german: "Homebrew-Installation im Terminal geöffnet. Danach erneut prüfen.", .english: "Homebrew installer opened in Terminal. Check again afterwards."],
+        "status.ffmpegInstallOpened": [.german: "FFmpeg-Installation im Terminal geöffnet. Danach erneut prüfen.", .english: "FFmpeg installer opened in Terminal. Check again afterwards."],
         "status.recordingStarted": [.german: "Recording läuft… Systemaudio + Mikrofon werden getrennt gespeichert.", .english: "Recording… system audio and microphone are saved as separate tracks."],
         "status.startFailed": [.german: "Start fehlgeschlagen: %@", .english: "Start failed: %@"],
         "recording.errorStart": [.german: "Recording konnte nicht starten: %@. Prüfe zusätzlich zu Mikrofon auch Datenschutz → Screen & System Audio Recording für EchoPilot/Xcode.", .english: "Recording could not start: %@. In addition to microphone access, check Privacy & Security → Screen & System Audio Recording for EchoPilot/Xcode."],
@@ -1915,12 +2024,20 @@ final class MeetingCaptureViewModel: ObservableObject {
     @Published var microphonePermissionStatus = L10n.text("status.notChecked")
     @Published var screenCapturePermissionGranted = false
     @Published var screenCapturePermissionStatus = L10n.text("status.notChecked")
+    @Published var homebrewInstalled = false
+    @Published var homebrewStatus = L10n.text("status.notChecked")
+    @Published var ffmpegInstalled = false
+    @Published var ffmpegStatus = L10n.text("status.notChecked")
     @Published var updateInfo: UpdateInfo?
     @Published var isCheckingForUpdates = false
     @Published var updateCheckStatus = ""
 
     var permissionsReady: Bool {
         microphonePermissionGranted && screenCapturePermissionGranted
+    }
+
+    var dependenciesReady: Bool {
+        homebrewInstalled && ffmpegInstalled
     }
 
     private let service = MeetingCaptureService()
@@ -1938,6 +2055,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         refreshMeetings()
         prepareNewRecording()
         refreshPermissions(showOverlayIfNeeded: true)
+        refreshDependencies(showOverlayIfNeeded: true)
         startMeetingDetector()
         checkForUpdatesOnStartup()
     }
@@ -1985,7 +2103,29 @@ final class MeetingCaptureViewModel: ObservableObject {
         microphonePermissionStatus = AppPermissions.microphoneStatusText
         screenCapturePermissionGranted = AppPermissions.isScreenCaptureGranted
         screenCapturePermissionStatus = AppPermissions.screenCaptureStatusText
-        if permissionsReady {
+        if permissionsReady && dependenciesReady {
+            showPermissionsOverlay = false
+        } else if showOverlayIfNeeded {
+            showPermissionsOverlay = true
+        }
+    }
+
+    func refreshDependencies(showOverlayIfNeeded: Bool = true) {
+        if let path = AppDependencies.homebrewPath {
+            homebrewInstalled = true
+            homebrewStatus = L10n.format("dependencyStatus.installedAt", path)
+        } else {
+            homebrewInstalled = false
+            homebrewStatus = L10n.text("dependencyStatus.missing")
+        }
+        if let path = AppDependencies.ffmpegPath {
+            ffmpegInstalled = true
+            ffmpegStatus = L10n.format("dependencyStatus.installedAt", path)
+        } else {
+            ffmpegInstalled = false
+            ffmpegStatus = L10n.text("dependencyStatus.missing")
+        }
+        if permissionsReady && dependenciesReady {
             showPermissionsOverlay = false
         } else if showOverlayIfNeeded {
             showPermissionsOverlay = true
@@ -1994,6 +2134,7 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     func refreshLocalizedText() {
         refreshPermissions(showOverlayIfNeeded: false)
+        refreshDependencies(showOverlayIfNeeded: false)
         if selectedMeetingID == nil && outputDir == nil && !isRecording && !isStarting {
             status = L10n.text("status.ready")
         }
@@ -2031,6 +2172,16 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     func openScreenCaptureSettings() {
         AppPermissions.openScreenCaptureSettings()
+    }
+
+    func installHomebrew() {
+        AppDependencies.openHomebrewInstallTerminal()
+        status = L10n.text("status.homebrewInstallOpened")
+    }
+
+    func installFFmpeg() {
+        AppDependencies.openFFmpegInstallTerminal()
+        status = L10n.text("status.ffmpegInstallOpened")
     }
 
     func start() {
@@ -2296,6 +2447,12 @@ final class MeetingCaptureViewModel: ObservableObject {
 
 
     func transcribeCurrentRecording() {
+        refreshDependencies(showOverlayIfNeeded: false)
+        guard ffmpegInstalled else {
+            showPermissionsOverlay = true
+            status = L10n.text("status.dependenciesRequired")
+            return
+        }
         guard let outputDir else {
             transcriptionStatus = L10n.text("transcription.noRecording")
             return
@@ -2655,6 +2812,7 @@ struct ContentView: View {
         .onAppear {
             EchoPilotWindowController.shared.attachToExistingWindows()
             vm.refreshPermissions(showOverlayIfNeeded: true)
+            vm.refreshDependencies(showOverlayIfNeeded: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.startRecordingRequested)) { _ in
             vm.start()
@@ -2669,6 +2827,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.checkPermissionsRequested)) { _ in
             EchoPilotWindowController.shared.showApp()
             vm.refreshPermissions(showOverlayIfNeeded: true)
+            vm.refreshDependencies(showOverlayIfNeeded: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.languageChanged)) { _ in
             vm.refreshLocalizedText()
@@ -2712,20 +2871,44 @@ struct ContentView: View {
                     settingsAction: vm.openScreenCaptureSettings
                 )
 
+                dependencyRow(
+                    title: text("dependencies.homebrew"),
+                    status: vm.homebrewStatus,
+                    installed: vm.homebrewInstalled,
+                    explanation: text("dependencies.homebrew.explanation"),
+                    installTitle: text("dependencies.homebrew.install"),
+                    installAction: vm.installHomebrew
+                )
+
+                dependencyRow(
+                    title: text("dependencies.ffmpeg"),
+                    status: vm.ffmpegStatus,
+                    installed: vm.ffmpegInstalled,
+                    explanation: text("dependencies.ffmpeg.explanation"),
+                    installTitle: text("dependencies.ffmpeg.install"),
+                    installAction: vm.installFFmpeg
+                )
+
                 Divider()
 
                 HStack {
-                    Button(text("permissions.recheck")) { vm.refreshPermissions(showOverlayIfNeeded: true) }
+                    Button(text("permissions.recheck")) {
+                        vm.refreshPermissions(showOverlayIfNeeded: true)
+                        vm.refreshDependencies(showOverlayIfNeeded: true)
+                    }
                     Button(text("permissions.microphoneSettings")) { vm.openMicrophoneSettings() }
                     Button(text("permissions.systemAudioSettings")) { vm.openScreenCaptureSettings() }
                     Spacer()
                     Button(text("permissions.later")) { vm.showPermissionsOverlay = false }
-                    Button(text("permissions.done")) { vm.refreshPermissions(showOverlayIfNeeded: true) }
+                    Button(text("permissions.done")) {
+                        vm.refreshPermissions(showOverlayIfNeeded: true)
+                        vm.refreshDependencies(showOverlayIfNeeded: true)
+                    }
                         .buttonStyle(.borderedProminent)
-                        .disabled(!vm.permissionsReady)
+                        .disabled(!vm.permissionsReady || !vm.dependenciesReady)
                 }
 
-                if !vm.permissionsReady {
+                if !vm.permissionsReady || !vm.dependenciesReady {
                     Text(text("permissions.note"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -2769,6 +2952,43 @@ struct ContentView: View {
             Button(requestTitle, action: requestAction)
                 .disabled(granted)
             Button(text("permissions.settings"), action: settingsAction)
+        }
+        .padding(14)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func dependencyRow(
+        title: String,
+        status: String,
+        installed: Bool,
+        explanation: String,
+        installTitle: String,
+        installAction: @escaping () -> Void
+    ) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: installed ? "checkmark.circle.fill" : "shippingbox.fill")
+                .font(.title2)
+                .foregroundStyle(installed ? .green : .orange)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(title)
+                        .font(.headline)
+                    Text(status)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(installed ? Color.green.opacity(0.16) : Color.orange.opacity(0.16), in: Capsule())
+                }
+                Text(explanation)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+            Button(installTitle, action: installAction)
+                .disabled(installed || (title == text("dependencies.ffmpeg") && !vm.homebrewInstalled))
         }
         .padding(14)
         .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
@@ -3011,7 +3231,10 @@ struct ContentView: View {
 
     private var secondaryActionsMenu: some View {
         Menu {
-            Button(text("actions.checkPermissions")) { vm.refreshPermissions(showOverlayIfNeeded: true) }
+            Button(text("actions.checkPermissions")) {
+                vm.refreshPermissions(showOverlayIfNeeded: true)
+                vm.refreshDependencies(showOverlayIfNeeded: true)
+            }
                 .disabled(vm.isRecording || vm.isStarting)
             Button(text("actions.reloadMicrophones")) { vm.refreshAudioInputs() }
                 .disabled(vm.isRecording)
