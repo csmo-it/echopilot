@@ -2,9 +2,11 @@ import SwiftUI
 import ScreenCaptureKit
 import AVFoundation
 import CoreMedia
+import CoreMediaIO
 import AppKit
 import AudioToolbox
 import Foundation
+import UserNotifications
 
 struct TrackStats: Equatable {
     var buffers: Int = 0
@@ -267,6 +269,24 @@ struct MeetingSuggestion: Equatable {
     let detail: String
 }
 
+struct MeetingDeviceStatus: Equatable {
+    var inMeeting: Bool = false
+    var micActive: Bool = false
+    var cameraActive: Bool = false
+    var activeMics: [String] = []
+
+    func summary(language: AppLanguage = AppSettings.currentLanguage) -> String {
+        if inMeeting {
+            var parts: [String] = []
+            if micActive { parts.append(L10n.text("meetingDetection.micActive", language: language)) }
+            if cameraActive { parts.append(L10n.text("meetingDetection.cameraActive", language: language)) }
+            if !activeMics.isEmpty { parts.append(activeMics.joined(separator: ", ")) }
+            return parts.isEmpty ? L10n.text("meetingDetection.inMeeting", language: language) : parts.joined(separator: " · ")
+        }
+        return L10n.text("meetingDetection.notInMeeting", language: language)
+    }
+}
+
 enum TranscriptPreviewKind: String, CaseIterable, Identifiable, Hashable {
     case timeline
     case kiHandover
@@ -308,7 +328,26 @@ enum EchoPilotNotifications {
 }
 
 enum MeetingCallDetector {
+    static func deviceStatus() -> MeetingDeviceStatus {
+        let activeMics = activeMicrophoneNames()
+        let cameraActive = isCameraRunningSomewhere()
+        return MeetingDeviceStatus(
+            inMeeting: !activeMics.isEmpty || cameraActive,
+            micActive: !activeMics.isEmpty,
+            cameraActive: cameraActive,
+            activeMics: activeMics
+        )
+    }
+
     static func detect() async -> MeetingSuggestion? {
+        let deviceStatus = deviceStatus()
+        let contextSuggestion = await detectMeetingContext()
+        guard deviceStatus.inMeeting else { return contextSuggestion }
+        if let contextSuggestion { return contextSuggestion }
+        return MeetingSuggestion(appName: "Meeting", detail: deviceStatus.summary())
+    }
+
+    private static func detectMeetingContext() async -> MeetingSuggestion? {
         if let teamsLogSuggestion = detectTeamsCallFromLogs() {
             return teamsLogSuggestion
         }
@@ -353,6 +392,96 @@ enum MeetingCallDetector {
         }
 
         return nil
+    }
+
+    private static func activeMicrophoneNames() -> [String] {
+        audioInputDevices().compactMap { deviceID in
+            isAudioDeviceRunningSomewhere(deviceID) ? audioDeviceName(deviceID) : nil
+        }
+    }
+
+    private static func audioInputDevices() -> [AudioObjectID] {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr, size > 0 else {
+            return []
+        }
+        var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &ids) == noErr else {
+            return []
+        }
+        return ids.filter { audioDeviceHasInput($0) }
+    }
+
+    private static func audioDeviceHasInput(_ id: AudioObjectID) -> Bool {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: kAudioObjectPropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(id, &address, 0, nil, &size) == noErr, size > 0 else { return false }
+        let buffer = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+        defer { buffer.deallocate() }
+        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, buffer) == noErr else { return false }
+        return buffer.assumingMemoryBound(to: AudioBufferList.self).pointee.mNumberBuffers > 0
+    }
+
+    private static func isAudioDeviceRunningSomewhere(_ id: AudioObjectID) -> Bool {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var running: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &running) == noErr else { return false }
+        return running != 0
+    }
+
+    private static func audioDeviceName(_ id: AudioObjectID) -> String {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyName,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var name: CFString = "" as CFString
+        var size = UInt32(MemoryLayout<CFString?>.size)
+        let status = withUnsafeMutablePointer(to: &name) { pointer in
+            AudioObjectGetPropertyData(id, &address, 0, nil, &size, pointer)
+        }
+        return status == noErr ? name as String : L10n.text("meetingDetection.unknownMic")
+    }
+
+    private static func isCameraRunningSomewhere() -> Bool {
+        var address = CMIOObjectPropertyAddress(
+            mSelector: CMIOObjectPropertySelector(kCMIOHardwarePropertyDevices),
+            mScope: CMIOObjectPropertyScope(kCMIOObjectPropertyScopeGlobal),
+            mElement: CMIOObjectPropertyElement(kCMIOObjectPropertyElementMain)
+        )
+        var size: UInt32 = 0
+        guard CMIOObjectGetPropertyDataSize(CMIOObjectID(kCMIOObjectSystemObject), &address, 0, nil, &size) == noErr, size > 0 else {
+            return false
+        }
+        var devices = [CMIOObjectID](repeating: 0, count: Int(size) / MemoryLayout<CMIOObjectID>.size)
+        guard CMIOObjectGetPropertyData(CMIOObjectID(kCMIOObjectSystemObject), &address, 0, nil, size, &size, &devices) == noErr else {
+            return false
+        }
+        return devices.contains { deviceID in
+            var runningAddress = CMIOObjectPropertyAddress(
+                mSelector: CMIOObjectPropertySelector(kCMIODevicePropertyDeviceIsRunningSomewhere),
+                mScope: CMIOObjectPropertyScope(kCMIOObjectPropertyScopeGlobal),
+                mElement: CMIOObjectPropertyElement(kCMIOObjectPropertyElementMain)
+            )
+            var running: UInt32 = 0
+            var runningSize = UInt32(MemoryLayout<UInt32>.size)
+            guard CMIOObjectGetPropertyData(deviceID, &runningAddress, 0, nil, runningSize, &runningSize, &running) == noErr else { return false }
+            return running != 0
+        }
     }
 
     private static func detectTeamsCallFromLogs() -> MeetingSuggestion? {
@@ -480,6 +609,25 @@ enum AppPermissions {
     private static func openPrivacyPane(_ pane: String) {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") else { return }
         NSWorkspace.shared.open(url)
+    }
+}
+
+enum EchoPilotUserNotifier {
+    static func requestAuthorization() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    static func notifyMeetingDetected(detail: String) {
+        let content = UNMutableNotificationContent()
+        content.title = L10n.text("meetingDetection.notification.title")
+        content.body = "\(L10n.text("meetingDetection.notification.body"))\n\(detail)"
+        content.sound = .default
+        let request = UNNotificationRequest(
+            identifier: "echopilot-meeting-detected-\(Int(Date().timeIntervalSince1970))",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
     }
 }
 
@@ -1238,6 +1386,14 @@ enum L10n {
         "suggestion.title": [.german: "Möglicher Call erkannt", .english: "Possible Call Detected"],
         "suggestion.subtitle": [.german: "EchoPilot schlägt nur vor — keine automatische Aufnahme.", .english: "EchoPilot only suggests — no automatic recording."],
         "suggestion.prepare": [.german: "Aufnahme vorbereiten", .english: "Prepare Recording"],
+        "meetingDetection.title": [.german: "Meeting-Erkennung", .english: "Meeting Detection"],
+        "meetingDetection.inMeeting": [.german: "Meeting/Call wahrscheinlich aktiv", .english: "Meeting/call likely active"],
+        "meetingDetection.notInMeeting": [.german: "Kein aktiver Call erkannt", .english: "No active call detected"],
+        "meetingDetection.micActive": [.german: "Mikrofon aktiv", .english: "Microphone active"],
+        "meetingDetection.cameraActive": [.german: "Kamera aktiv", .english: "Camera active"],
+        "meetingDetection.unknownMic": [.german: "Unbekanntes Mikrofon", .english: "Unknown microphone"],
+        "meetingDetection.notification.title": [.german: "Meeting erkannt", .english: "Meeting detected"],
+        "meetingDetection.notification.body": [.german: "Soll EchoPilot dieses Meeting aufzeichnen? Klicken zum Öffnen.", .english: "Should EchoPilot record this meeting? Click to open."],
         "button.dismiss": [.german: "Ausblenden", .english: "Dismiss"],
 
         "update.title": [.german: "Neue EchoPilot-Version verfügbar", .english: "New EchoPilot Version Available"],
@@ -1636,6 +1792,7 @@ final class MeetingCaptureViewModel: ObservableObject {
     @Published var transcriptPreviewTitle = "Timeline"
     @Published var transcriptPreviewText = L10n.text("transcription.previewEmpty")
     @Published var meetingSuggestion: MeetingSuggestion?
+    @Published var meetingDeviceStatus = MeetingDeviceStatus()
     @Published var showPermissionsOverlay = false
     @Published var microphonePermissionGranted = false
     @Published var microphonePermissionStatus = L10n.text("status.notChecked")
@@ -1655,6 +1812,7 @@ final class MeetingCaptureViewModel: ObservableObject {
     private var startedAt: Date?
     private var transcriptionTask: Task<Void, Never>?
     private var suggestionSnoozedUntil: Date?
+    private var didNotifyForCurrentDetectedMeeting = false
     private let transcriptPreviewMaxBytes = 64 * 1024
     private var lastDisplayedElapsedSecond = -1
 
@@ -2134,7 +2292,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         Task { @MainActor in
             await checkMeetingSuggestion()
         }
-        detectorTimer = Timer.scheduledTimer(withTimeInterval: 12, repeats: true) { [weak self] _ in
+        detectorTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.checkMeetingSuggestion()
             }
@@ -2142,12 +2300,41 @@ final class MeetingCaptureViewModel: ObservableObject {
     }
 
     private func checkMeetingSuggestion() async {
-        guard !isRecording, !isStarting else { return }
+        guard !isRecording, !isStarting else {
+            meetingDeviceStatus = MeetingDeviceStatus()
+            didNotifyForCurrentDetectedMeeting = false
+            return
+        }
+        let deviceStatus = MeetingCallDetector.deviceStatus()
+        if meetingDeviceStatus != deviceStatus {
+            meetingDeviceStatus = deviceStatus
+        }
+        if !deviceStatus.inMeeting {
+            didNotifyForCurrentDetectedMeeting = false
+            return
+        }
         if let snoozed = suggestionSnoozedUntil, snoozed > Date() { return }
-        if meetingSuggestion != nil { return }
+        if meetingSuggestion != nil {
+            maybeNotifyMeetingDetected(detail: meetingSuggestion?.detail ?? deviceStatus.summary())
+            return
+        }
         if let suggestion = await MeetingCallDetector.detect() {
             meetingSuggestion = suggestion
+            maybeNotifyMeetingDetected(detail: suggestion.detail)
         }
+    }
+
+    private func maybeNotifyMeetingDetected(detail: String) {
+        guard !didNotifyForCurrentDetectedMeeting, isAppMinimizedOrHidden() else { return }
+        didNotifyForCurrentDetectedMeeting = true
+        EchoPilotUserNotifier.notifyMeetingDetected(detail: detail)
+    }
+
+    private func isAppMinimizedOrHidden() -> Bool {
+        if NSApp.isHidden { return true }
+        let appWindows = NSApp.windows.filter { $0.canBecomeKey || $0.title.contains("EchoPilot") }
+        guard !appWindows.isEmpty else { return true }
+        return !appWindows.contains { $0.isVisible && !$0.isMiniaturized }
     }
 
     private func stopTimer() {
@@ -2563,6 +2750,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 updateBanner
+                meetingDetectionBox
                 suggestionBanner
                 controlsBox
                 metadataBox
@@ -2749,6 +2937,29 @@ struct ContentView: View {
                 .background(Color.orange.opacity(0.13), in: RoundedRectangle(cornerRadius: 12))
             }
         }
+    }
+
+    private var meetingDetectionBox: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Label(text("meetingDetection.title"), systemImage: vm.meetingDeviceStatus.inMeeting ? "video.badge.checkmark" : "video.slash")
+                .font(.headline)
+                .foregroundStyle(vm.meetingDeviceStatus.inMeeting ? .green : .secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(vm.meetingDeviceStatus.inMeeting ? text("meetingDetection.inMeeting") : text("meetingDetection.notInMeeting"))
+                    .font(.subheadline.weight(.semibold))
+                Text(vm.meetingDeviceStatus.summary(language: language))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer()
+            if vm.meetingDeviceStatus.inMeeting && !vm.isRecording && !vm.isStarting {
+                Button(text("suggestion.prepare")) { vm.prepareSuggestedRecording() }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(14)
+        .background((vm.meetingDeviceStatus.inMeeting ? Color.green : Color.secondary).opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var updateBanner: some View {
@@ -3395,6 +3606,7 @@ final class EchoPilotStatusBarController: NSObject {
 
 final class EchoPilotAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        EchoPilotUserNotifier.requestAuthorization()
         EchoPilotStatusBarController.shared.start()
         NSApp.setActivationPolicy(.regular)
         DispatchQueue.main.async {
