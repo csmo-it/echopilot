@@ -339,15 +339,7 @@ enum MeetingCallDetector {
         )
     }
 
-    static func detect() async -> MeetingSuggestion? {
-        let deviceStatus = deviceStatus()
-        let contextSuggestion = await detectMeetingContext()
-        guard deviceStatus.inMeeting else { return contextSuggestion }
-        if let contextSuggestion { return contextSuggestion }
-        return MeetingSuggestion(appName: "Meeting", detail: deviceStatus.summary())
-    }
-
-    private static func detectMeetingContext() async -> MeetingSuggestion? {
+    static func detectMeetingContext() async -> MeetingSuggestion? {
         if let teamsLogSuggestion = detectTeamsCallFromLogs() {
             return teamsLogSuggestion
         }
@@ -1383,8 +1375,6 @@ enum L10n {
         "actions.openTranscriptionInput": [.german: "Transcription-Input öffnen", .english: "Open Transcription Input"],
         "actions.saveMetadata": [.german: "Metadaten speichern", .english: "Save Metadata"],
 
-        "suggestion.title": [.german: "Möglicher Call erkannt", .english: "Possible Call Detected"],
-        "suggestion.subtitle": [.german: "EchoPilot schlägt nur vor — keine automatische Aufnahme.", .english: "EchoPilot only suggests — no automatic recording."],
         "suggestion.prepare": [.german: "Aufnahme vorbereiten", .english: "Prepare Recording"],
         "meetingDetection.title": [.german: "Meeting-Erkennung", .english: "Meeting Detection"],
         "meetingDetection.inMeeting": [.german: "Meeting/Call wahrscheinlich aktiv", .english: "Meeting/call likely active"],
@@ -1811,7 +1801,6 @@ final class MeetingCaptureViewModel: ObservableObject {
     private var detectorTimer: Timer?
     private var startedAt: Date?
     private var transcriptionTask: Task<Void, Never>?
-    private var suggestionSnoozedUntil: Date?
     private var didNotifyForCurrentDetectedMeeting = false
     private let transcriptPreviewMaxBytes = 64 * 1024
     private var lastDisplayedElapsedSecond = -1
@@ -2157,19 +2146,21 @@ final class MeetingCaptureViewModel: ObservableObject {
         }
     }
 
-    func dismissMeetingSuggestion() {
-        meetingSuggestion = nil
-        suggestionSnoozedUntil = Date().addingTimeInterval(5 * 60)
-    }
-
     func prepareSuggestedRecording() {
         let suggestion = meetingSuggestion
         prepareNewRecording()
-        if let suggestion {
-            meetingTitle = suggestion.detail
+        if let title = suggestedMeetingTitle(from: suggestion) {
+            meetingTitle = title
             status = L10n.text("status.suggestionPrepared")
         }
         meetingSuggestion = nil
+    }
+
+    private func suggestedMeetingTitle(from suggestion: MeetingSuggestion?) -> String? {
+        guard let suggestion else { return nil }
+        if suggestion.detail.contains(":") { return suggestion.detail }
+        if suggestion.appName != "Meeting", suggestion.appName != "Meeting-App" { return suggestion.appName }
+        return nil
     }
 
 
@@ -2310,17 +2301,19 @@ final class MeetingCaptureViewModel: ObservableObject {
             meetingDeviceStatus = deviceStatus
         }
         if !deviceStatus.inMeeting {
+            meetingSuggestion = nil
             didNotifyForCurrentDetectedMeeting = false
             return
         }
-        if let snoozed = suggestionSnoozedUntil, snoozed > Date() { return }
         if meetingSuggestion != nil {
             maybeNotifyMeetingDetected(detail: meetingSuggestion?.detail ?? deviceStatus.summary())
             return
         }
-        if let suggestion = await MeetingCallDetector.detect() {
+        if let suggestion = await MeetingCallDetector.detectMeetingContext() {
             meetingSuggestion = suggestion
             maybeNotifyMeetingDetected(detail: suggestion.detail)
+        } else {
+            maybeNotifyMeetingDetected(detail: deviceStatus.summary())
         }
     }
 
@@ -2751,7 +2744,6 @@ struct ContentView: View {
                 header
                 updateBanner
                 meetingDetectionBox
-                suggestionBanner
                 controlsBox
                 metadataBox
                 levelMeters
@@ -2914,29 +2906,6 @@ struct ContentView: View {
             Label(text("actions.more"), systemImage: "ellipsis.circle")
         }
         .buttonStyle(.bordered)
-    }
-
-    private var suggestionBanner: some View {
-        Group {
-            if let suggestion = vm.meetingSuggestion {
-                HStack(alignment: .center, spacing: 12) {
-                    Label(text("suggestion.title"), systemImage: "video.badge.waveform")
-                        .font(.headline)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(suggestion.detail)
-                            .lineLimit(1)
-                        Text(text("suggestion.subtitle"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button(text("suggestion.prepare")) { vm.prepareSuggestedRecording() }
-                    Button(text("button.dismiss")) { vm.dismissMeetingSuggestion() }
-                }
-                .padding(14)
-                .background(Color.orange.opacity(0.13), in: RoundedRectangle(cornerRadius: 12))
-            }
-        }
     }
 
     private var meetingDetectionBox: some View {
