@@ -1556,8 +1556,6 @@ final class MeetingCaptureViewModel: ObservableObject {
     @Published var isStarting = false
     @Published var status = L10n.text("status.ready")
     @Published var outputDir: URL?
-    @Published var systemStats = TrackStats()
-    @Published var micStats = TrackStats()
     @Published var elapsed: TimeInterval = 0
     @Published var audioInputDevices: [AudioInputDevice] = AudioInputDevice.available()
     @Published var selectedAudioInputID: String? = nil {
@@ -1611,7 +1609,6 @@ final class MeetingCaptureViewModel: ObservableObject {
     private var transcriptionTask: Task<Void, Never>?
     private var suggestionSnoozedUntil: Date?
     private let transcriptPreviewMaxBytes = 64 * 1024
-    private let liveStatsInterval: TimeInterval = 0.5
     private var lastDisplayedElapsedSecond = -1
 
     init() {
@@ -1748,7 +1745,6 @@ final class MeetingCaptureViewModel: ObservableObject {
                 stopTimer()
                 let session = try await service.stop()
                 isRecording = false
-                refreshStats()
                 if let session {
                     outputDir = session.outputDir
                     status = L10n.format("status.recordingSaved", session.outputDir.path)
@@ -1825,8 +1821,6 @@ final class MeetingCaptureViewModel: ObservableObject {
         artifactStatus = L10n.text("status.newArtifactHint")
         status = L10n.text("status.newPrepared")
         elapsed = 0
-        systemStats = TrackStats()
-        micStats = TrackStats()
     }
 
     func deleteSelectedMeeting() {
@@ -2047,10 +2041,10 @@ final class MeetingCaptureViewModel: ObservableObject {
     private func startTimer() {
         timer?.invalidate()
         lastDisplayedElapsedSecond = -1
-        refreshStats()
-        timer = Timer.scheduledTimer(withTimeInterval: liveStatsInterval, repeats: true) { [weak self] _ in
+        refreshElapsed()
+        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.refreshStats()
+                self?.refreshElapsed()
             }
         }
     }
@@ -2081,16 +2075,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         timer = nil
     }
 
-    private func refreshStats() {
-        let stats = service.stats()
-        let displaySystemStats = displayStats(from: stats.system)
-        let displayMicStats = displayStats(from: stats.mic)
-        if systemStats != displaySystemStats {
-            systemStats = displaySystemStats
-        }
-        if micStats != displayMicStats {
-            micStats = displayMicStats
-        }
+    private func refreshElapsed() {
         if let startedAt {
             let currentElapsed = Date().timeIntervalSince(startedAt)
             let elapsedSecond = Int(currentElapsed)
@@ -2101,20 +2086,24 @@ final class MeetingCaptureViewModel: ObservableObject {
         }
     }
 
-    private func displayStats(from stats: TrackStats) -> TrackStats {
-        var display = stats
-        // The live meter does not need sample-accurate float churn. Quantizing
-        // levels avoids forcing SwiftUI to repaint the whole recording view for
-        // tiny audio-level changes during long recordings.
-        display.level = (stats.level * 25).rounded() / 25
-        return display
+    func liveLevel(for track: RecordingTrackKind) -> Float {
+        let stats = service.stats()
+        switch track {
+        case .system: return stats.system.level
+        case .microphone: return stats.mic.level
+        }
     }
+}
+
+enum RecordingTrackKind {
+    case system
+    case microphone
 }
 
 struct LevelMeterView: View {
     let title: String
-    let level: Float
     let isActive: Bool
+    let levelProvider: () -> Float
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -2126,25 +2115,117 @@ struct LevelMeterView: View {
                     .font(.caption2.monospaced())
                     .foregroundStyle(isActive ? .green : .secondary)
             }
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.secondary.opacity(0.14))
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(levelColor)
-                        .frame(width: max(4, proxy.size.width * CGFloat(max(0, min(1, level)))))
-                        .animation(.easeOut(duration: 0.18), value: level)
-                }
-            }
+            AppKitLevelMeterView(isActive: isActive, levelProvider: levelProvider)
             .frame(height: 14)
         }
     }
+}
 
-    private var levelColor: Color {
+struct AppKitLevelMeterView: NSViewRepresentable {
+    let isActive: Bool
+    let levelProvider: () -> Float
+
+    func makeNSView(context: Context) -> LevelMeterNSView {
+        let view = LevelMeterNSView()
+        view.levelProvider = levelProvider
+        view.setActive(isActive)
+        return view
+    }
+
+    func updateNSView(_ nsView: LevelMeterNSView, context: Context) {
+        nsView.levelProvider = levelProvider
+        nsView.setActive(isActive)
+    }
+}
+
+final class LevelMeterNSView: NSView {
+    var levelProvider: (() -> Float)?
+
+    private let backgroundLayer = CALayer()
+    private let fillLayer = CALayer()
+    private var timer: Timer?
+    private var currentLevel: Float = 0
+    private var isActive = false
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.masksToBounds = false
+        backgroundLayer.backgroundColor = NSColor.secondaryLabelColor.withAlphaComponent(0.14).cgColor
+        fillLayer.backgroundColor = NSColor.systemGreen.cgColor
+        layer?.addSublayer(backgroundLayer)
+        layer?.addSublayer(fillLayer)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        stopTimer()
+    }
+
+    override func layout() {
+        super.layout()
+        backgroundLayer.frame = bounds
+        backgroundLayer.cornerRadius = 6
+        fillLayer.cornerRadius = 6
+        render(level: currentLevel)
+    }
+
+    func setActive(_ active: Bool) {
+        guard isActive != active else { return }
+        isActive = active
+        if active {
+            startTimer()
+        } else {
+            stopTimer()
+            render(level: 0)
+        }
+    }
+
+    private func startTimer() {
+        stopTimer()
+        refreshLevel()
+        let timer = Timer(timeInterval: 0.12, repeats: true) { [weak self] _ in
+            self?.refreshLevel()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
+    private func stopTimer() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func refreshLevel() {
+        let rawLevel = levelProvider?() ?? 0
+        let clamped = max(0, min(1, rawLevel))
+        let quantized = (clamped * 50).rounded() / 50
+        guard abs(quantized - currentLevel) >= 0.01 else { return }
+        render(level: quantized)
+    }
+
+    private func render(level: Float) {
+        currentLevel = level
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        fillLayer.backgroundColor = color(for: level).cgColor
+        fillLayer.frame = NSRect(
+            x: 0,
+            y: 0,
+            width: max(4, bounds.width * CGFloat(level)),
+            height: bounds.height
+        )
+        CATransaction.commit()
+    }
+
+    private func color(for level: Float) -> NSColor {
         switch level {
-        case 0..<0.68: return .green
-        case 0.68..<0.92: return .yellow
-        default: return .red
+        case 0..<0.68: return .systemGreen
+        case 0.68..<0.92: return .systemYellow
+        default: return .systemRed
         }
     }
 }
@@ -2613,8 +2694,12 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 10) {
             Label(text("levels.title"), systemImage: "waveform")
                 .font(.headline)
-            LevelMeterView(title: text("levels.system"), level: vm.systemStats.level, isActive: vm.isRecording)
-            LevelMeterView(title: text("levels.microphone"), level: vm.micStats.level, isActive: vm.isRecording)
+            LevelMeterView(title: text("levels.system"), isActive: vm.isRecording) {
+                vm.liveLevel(for: .system)
+            }
+            LevelMeterView(title: text("levels.microphone"), isActive: vm.isRecording) {
+                vm.liveLevel(for: .microphone)
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
