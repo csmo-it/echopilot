@@ -1611,6 +1611,8 @@ final class MeetingCaptureViewModel: ObservableObject {
     private var transcriptionTask: Task<Void, Never>?
     private var suggestionSnoozedUntil: Date?
     private let transcriptPreviewMaxBytes = 64 * 1024
+    private let liveStatsInterval: TimeInterval = 0.5
+    private var lastDisplayedElapsedSecond = -1
 
     init() {
         refreshAudioInputs()
@@ -2044,7 +2046,9 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     private func startTimer() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { [weak self] _ in
+        lastDisplayedElapsedSecond = -1
+        refreshStats()
+        timer = Timer.scheduledTimer(withTimeInterval: liveStatsInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.refreshStats()
             }
@@ -2079,11 +2083,31 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     private func refreshStats() {
         let stats = service.stats()
-        systemStats = stats.system
-        micStats = stats.mic
-        if let startedAt {
-            elapsed = Date().timeIntervalSince(startedAt)
+        let displaySystemStats = displayStats(from: stats.system)
+        let displayMicStats = displayStats(from: stats.mic)
+        if systemStats != displaySystemStats {
+            systemStats = displaySystemStats
         }
+        if micStats != displayMicStats {
+            micStats = displayMicStats
+        }
+        if let startedAt {
+            let currentElapsed = Date().timeIntervalSince(startedAt)
+            let elapsedSecond = Int(currentElapsed)
+            if elapsedSecond != lastDisplayedElapsedSecond {
+                lastDisplayedElapsedSecond = elapsedSecond
+                elapsed = TimeInterval(elapsedSecond)
+            }
+        }
+    }
+
+    private func displayStats(from stats: TrackStats) -> TrackStats {
+        var display = stats
+        // The live meter does not need sample-accurate float churn. Quantizing
+        // levels avoids forcing SwiftUI to repaint the whole recording view for
+        // tiny audio-level changes during long recordings.
+        display.level = (stats.level * 25).rounded() / 25
+        return display
     }
 }
 
@@ -2109,7 +2133,7 @@ struct LevelMeterView: View {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(levelColor)
                         .frame(width: max(4, proxy.size.width * CGFloat(max(0, min(1, level)))))
-                        .animation(.easeOut(duration: 0.12), value: level)
+                        .animation(.easeOut(duration: 0.18), value: level)
                 }
             }
             .frame(height: 14)
