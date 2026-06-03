@@ -2807,6 +2807,42 @@ struct PreferencesView: View {
     }
 }
 
+final class EchoPilotPreferencesWindowController: NSObject, NSWindowDelegate {
+    static let shared = EchoPilotPreferencesWindowController()
+
+    private var window: NSWindow?
+
+    private override init() {
+        super.init()
+    }
+
+    func show() {
+        if window == nil {
+            let hostingView = NSHostingView(rootView: PreferencesView())
+            let preferencesWindow = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 500, height: 320),
+                styleMask: [.titled, .closable, .miniaturizable],
+                backing: .buffered,
+                defer: false
+            )
+            preferencesWindow.title = L10n.text("prefs.title", language: AppSettings.currentLanguage)
+            preferencesWindow.contentView = hostingView
+            preferencesWindow.isReleasedWhenClosed = false
+            preferencesWindow.delegate = self
+            window = preferencesWindow
+        }
+
+        window?.title = L10n.text("prefs.title", language: AppSettings.currentLanguage)
+        window?.center()
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        window = nil
+    }
+}
+
 struct EchoPilotCommands: Commands {
     @AppStorage(AppSettings.preferredUILanguageKey) private var preferredUILanguage = AppLanguagePreference.system.rawValue
 
@@ -2817,8 +2853,7 @@ struct EchoPilotCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .appSettings) {
             Button(L10n.text("menu.preferences", language: language)) {
-                EchoPilotWindowController.shared.showApp()
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                EchoPilotPreferencesWindowController.shared.show()
             }
             .keyboardShortcut(",", modifiers: .command)
         }
@@ -2991,8 +3026,7 @@ final class EchoPilotStatusBarController: NSObject {
     }
 
     @objc private func openPreferences() {
-        EchoPilotWindowController.shared.showApp()
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        EchoPilotPreferencesWindowController.shared.show()
     }
 
     @objc private func toggleRecording() {
