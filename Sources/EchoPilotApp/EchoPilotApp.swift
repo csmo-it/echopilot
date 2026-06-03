@@ -1006,6 +1006,7 @@ struct MeetingRecord: Identifiable, Equatable {
     let createdAt: Date
     let hasTranscript: Bool
     let hasSummary: Bool
+    let isArchived: Bool
 
     func subtitle(language: AppLanguage = AppSettings.currentLanguage) -> String {
         let formatter = DateFormatter()
@@ -1013,8 +1014,9 @@ struct MeetingRecord: Identifiable, Equatable {
         formatter.timeStyle = .short
         formatter.locale = language == .german ? Locale(identifier: "de_DE") : Locale(identifier: "en_US")
         var parts = [formatter.string(from: createdAt)]
-        if hasTranscript { parts.append(L10n.text("transcripts.title", language: language)) }
+        parts.append(hasTranscript ? L10n.text("meeting.transcribed", language: language) : L10n.text("meeting.notTranscribed", language: language))
         if hasSummary { parts.append("Summary") }
+        if isArchived { parts.append(L10n.text("meeting.archived", language: language)) }
         return parts.joined(separator: " · ")
     }
 }
@@ -1025,6 +1027,35 @@ struct MeetingMetadata: Codable, Equatable {
     var customerProject: String
     var consentConfirmed: Bool
     var updatedAt: String
+    var archived: Bool
+
+    init(title: String, participants: String, customerProject: String, consentConfirmed: Bool, updatedAt: String, archived: Bool = false) {
+        self.title = title
+        self.participants = participants
+        self.customerProject = customerProject
+        self.consentConfirmed = consentConfirmed
+        self.updatedAt = updatedAt
+        self.archived = archived
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case title
+        case participants
+        case customerProject
+        case consentConfirmed
+        case updatedAt
+        case archived
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        participants = try container.decodeIfPresent(String.self, forKey: .participants) ?? ""
+        customerProject = try container.decodeIfPresent(String.self, forKey: .customerProject) ?? ""
+        consentConfirmed = try container.decodeIfPresent(Bool.self, forKey: .consentConfirmed) ?? false
+        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt) ?? ""
+        archived = try container.decodeIfPresent(Bool.self, forKey: .archived) ?? false
+    }
 }
 
 enum AppLanguage: String {
@@ -1132,6 +1163,16 @@ enum L10n {
         "sidebar.new.help": [.german: "Neue Aufnahme vorbereiten", .english: "Prepare new recording"],
         "sidebar.empty.title": [.german: "Noch keine Meetings", .english: "No meetings yet"],
         "sidebar.empty.subtitle": [.german: "Aufnahmen erscheinen hier automatisch.", .english: "Recordings appear here automatically."],
+        "sidebar.showArchived": [.german: "Archiv anzeigen", .english: "Show archive"],
+        "sidebar.emptyArchiveHidden": [.german: "Keine aktiven Meetings. Archiv anzeigen, um ausgeblendete Meetings zu sehen.", .english: "No active meetings. Show archive to view hidden meetings."],
+        "meeting.transcribed": [.german: "Transkribiert", .english: "Transcribed"],
+        "meeting.notTranscribed": [.german: "Nicht transkribiert", .english: "Not transcribed"],
+        "meeting.archived": [.german: "Archiviert", .english: "Archived"],
+        "meeting.archive": [.german: "Archivieren", .english: "Archive"],
+        "meeting.unarchive": [.german: "Aus Archiv zurückholen", .english: "Unarchive"],
+        "status.archived": [.german: "Meeting archiviert: %@", .english: "Meeting archived: %@"],
+        "status.unarchived": [.german: "Meeting aus Archiv zurückgeholt: %@", .english: "Meeting unarchived: %@"],
+        "status.archiveFailed": [.german: "Archivierung fehlgeschlagen: %@", .english: "Archive update failed: %@"],
 
         "permissions.title": [.german: "EchoPilot Berechtigungen", .english: "EchoPilot Permissions"],
         "permissions.intro": [.german: "Bitte einmal vor der Aufnahme freigeben. So merken wir Probleme direkt beim Start – nicht erst, wenn du ein Meeting aufzeichnen willst.", .english: "Please grant these once before recording. This catches issues at startup instead of during a meeting."],
@@ -1391,7 +1432,7 @@ enum MeetingLibrary {
         return documents.appendingPathComponent("EchoPilot", isDirectory: true)
     }
 
-    static func loadMeetings() -> [MeetingRecord] {
+    static func loadMeetings(includeArchived: Bool = false) -> [MeetingRecord] {
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(at: rootURL, includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey], options: [.skipsHiddenFiles]) else {
             return []
@@ -1402,11 +1443,13 @@ enum MeetingLibrary {
                 let values = try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
                 let createdAt = values?.creationDate ?? values?.contentModificationDate ?? Date.distantPast
                 let metadata = try? loadMetadata(from: url)
+                let isArchived = metadata?.archived ?? false
+                if isArchived && !includeArchived { return nil }
                 let title = metadata?.title.isEmpty == false ? metadata!.title : url.lastPathComponent
                 let inputDir = url.appendingPathComponent("transcription-input", isDirectory: true)
                 let hasTranscript = transcriptLooksPresent(at: inputDir.appendingPathComponent("meeting-notes-input.md"))
                 let hasSummary = fm.fileExists(atPath: url.appendingPathComponent("summary.md").path)
-                return MeetingRecord(id: url.path, title: title, url: url, createdAt: createdAt, hasTranscript: hasTranscript, hasSummary: hasSummary)
+                return MeetingRecord(id: url.path, title: title, url: url, createdAt: createdAt, hasTranscript: hasTranscript, hasSummary: hasSummary, isArchived: isArchived)
             }
             .sorted { $0.createdAt > $1.createdAt }
     }
@@ -1570,11 +1613,15 @@ final class MeetingCaptureViewModel: ObservableObject {
     @Published var transcriptionStatus = L10n.text("transcription.notStarted")
     @Published var notesInputURL: URL?
     @Published var meetings: [MeetingRecord] = []
+    @Published var showArchivedMeetings = false {
+        didSet { refreshMeetings() }
+    }
     @Published var selectedMeetingID: String?
     @Published var meetingTitle = ""
     @Published var participants = ""
     @Published var customerProject = ""
     @Published var consentConfirmed = false
+    @Published var selectedMeetingArchived = false
     @Published var whisperModel = AppSettings.whisperModel {
         didSet { AppSettings.whisperModel = whisperModel }
     }
@@ -1797,7 +1844,7 @@ final class MeetingCaptureViewModel: ObservableObject {
     }
 
     func refreshMeetings() {
-        meetings = MeetingLibrary.loadMeetings()
+        meetings = MeetingLibrary.loadMeetings(includeArchived: showArchivedMeetings)
         if let selectedMeetingID, !meetings.contains(where: { $0.id == selectedMeetingID }) {
             prepareNewRecording()
         }
@@ -1817,6 +1864,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         participants = ""
         customerProject = ""
         consentConfirmed = false
+        selectedMeetingArchived = false
         transcriptionStatus = L10n.text("transcription.notStarted")
         artifactStatus = L10n.text("status.newArtifactHint")
         status = L10n.text("status.newPrepared")
@@ -1854,14 +1902,45 @@ final class MeetingCaptureViewModel: ObservableObject {
             participants = metadata.participants
             customerProject = metadata.customerProject
             consentConfirmed = metadata.consentConfirmed
+            selectedMeetingArchived = metadata.archived
         } else {
             meetingTitle = ""
             participants = ""
             customerProject = ""
             consentConfirmed = false
+            selectedMeetingArchived = false
         }
         loadTranscriptPreview(.timeline)
         status = L10n.format("status.meetingSelected", meeting.title)
+    }
+
+    func setArchiveForSelectedMeeting(_ archived: Bool) {
+        guard let selectedMeetingID, let meeting = meetings.first(where: { $0.id == selectedMeetingID }) else { return }
+        setArchive(archived, for: meeting)
+    }
+
+    func setArchive(_ archived: Bool, for meeting: MeetingRecord) {
+        do {
+            var metadata = (try? MeetingLibrary.loadMetadata(from: meeting.url)) ?? MeetingMetadata(
+                title: meeting.title,
+                participants: "",
+                customerProject: "",
+                consentConfirmed: false,
+                updatedAt: ISO8601DateFormatter().string(from: Date())
+            )
+            metadata.archived = archived
+            metadata.updatedAt = ISO8601DateFormatter().string(from: Date())
+            try MeetingLibrary.saveMetadata(metadata, to: meeting.url)
+            if selectedMeetingID == meeting.id {
+                selectedMeetingArchived = archived
+            }
+            let archiveStatus = L10n.format(archived ? "status.archived" : "status.unarchived", meeting.title)
+            status = archiveStatus
+            refreshMeetings()
+            status = archiveStatus
+        } catch {
+            status = L10n.format("status.archiveFailed", error.localizedDescription)
+        }
     }
 
     func transcriptURL(for kind: TranscriptPreviewKind) -> URL? {
@@ -2034,7 +2113,8 @@ final class MeetingCaptureViewModel: ObservableObject {
             participants: participants.trimmingCharacters(in: .whitespacesAndNewlines),
             customerProject: customerProject.trimmingCharacters(in: .whitespacesAndNewlines),
             consentConfirmed: consentConfirmed,
-            updatedAt: ISO8601DateFormatter().string(from: Date())
+            updatedAt: ISO8601DateFormatter().string(from: Date()),
+            archived: selectedMeetingArchived
         )
     }
 
@@ -2401,6 +2481,10 @@ struct ContentView: View {
                 .buttonStyle(.borderless)
             }
 
+            Toggle(text("sidebar.showArchived"), isOn: $vm.showArchivedMeetings)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+
             List(selection: Binding(
                 get: { vm.selectedMeetingID },
                 set: { id in
@@ -2414,8 +2498,12 @@ struct ContentView: View {
             )) {
                 ForEach(vm.meetings) { meeting in
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(meeting.title)
-                            .lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(meeting.title)
+                                .lineLimit(1)
+                            Spacer(minLength: 4)
+                            meetingTranscriptBadge(meeting)
+                        }
                         Text(meeting.subtitle(language: language))
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -2428,6 +2516,12 @@ struct ContentView: View {
                             vm.deleteSelectedMeeting()
                         } label: {
                             Label(text("meeting.delete"), systemImage: "trash")
+                        }
+                        Divider()
+                        Button {
+                            vm.setArchive(!meeting.isArchived, for: meeting)
+                        } label: {
+                            Label(text(meeting.isArchived ? "meeting.unarchive" : "meeting.archive"), systemImage: meeting.isArchived ? "tray.and.arrow.up" : "archivebox")
                         }
                     }
                 }
@@ -2443,6 +2537,12 @@ struct ContentView: View {
                         Text(text("sidebar.empty.subtitle"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if !vm.showArchivedMeetings {
+                            Text(text("sidebar.emptyArchiveHidden"))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
                     }
                     .padding()
                 }
@@ -2450,6 +2550,12 @@ struct ContentView: View {
         }
         .padding(16)
         .frame(width: 300)
+    }
+
+    private func meetingTranscriptBadge(_ meeting: MeetingRecord) -> some View {
+        Image(systemName: meeting.hasTranscript ? "checkmark.circle.fill" : "circle.dashed")
+            .foregroundStyle(meeting.hasTranscript ? .green : .secondary)
+            .help(text(meeting.hasTranscript ? "meeting.transcribed" : "meeting.notTranscribed"))
     }
 
     private var mainPanel: some View {
@@ -2610,6 +2716,10 @@ struct ContentView: View {
             Divider()
             Button(text("actions.saveMetadata")) { vm.saveCurrentMetadata() }
                 .disabled(vm.outputDir == nil)
+            Button(text(vm.selectedMeetingArchived ? "meeting.unarchive" : "meeting.archive")) {
+                vm.setArchiveForSelectedMeeting(!vm.selectedMeetingArchived)
+            }
+            .disabled(vm.selectedMeetingID == nil || vm.isRecording || vm.isStarting)
             Button(text("meeting.delete"), role: .destructive) { vm.deleteSelectedMeeting() }
                 .disabled(vm.selectedMeetingID == nil || vm.isRecording || vm.isStarting || vm.isProcessing || vm.isTranscribing)
         } label: {
