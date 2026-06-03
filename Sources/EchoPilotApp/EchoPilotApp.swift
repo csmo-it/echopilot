@@ -2814,28 +2814,133 @@ final class EchoPilotPreferencesWindowController: NSObject, NSWindowDelegate {
 
     private override init() {
         super.init()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(languageChanged(_:)),
+            name: EchoPilotNotifications.languageChanged,
+            object: nil
+        )
     }
 
     func show() {
         if window == nil {
-            let hostingView = NSHostingView(rootView: PreferencesView())
             let preferencesWindow = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 500, height: 320),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered,
                 defer: false
             )
-            preferencesWindow.title = L10n.text("prefs.title", language: AppSettings.currentLanguage)
-            preferencesWindow.contentView = hostingView
             preferencesWindow.isReleasedWhenClosed = false
             preferencesWindow.delegate = self
             window = preferencesWindow
         }
 
-        window?.title = L10n.text("prefs.title", language: AppSettings.currentLanguage)
+        rebuildContent()
         window?.center()
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func languageChanged(_ notification: Notification) {
+        rebuildContent()
+    }
+
+    @objc private func selectLanguage(_ sender: NSButton) {
+        let preference: AppLanguagePreference
+        switch sender.tag {
+        case 1: preference = .german
+        case 2: preference = .english
+        default: preference = .system
+        }
+        AppSettings.preferredUILanguage = preference
+        NotificationCenter.default.post(name: EchoPilotNotifications.languageChanged, object: nil)
+    }
+
+    @objc private func checkUpdates() {
+        NotificationCenter.default.post(name: EchoPilotNotifications.checkUpdatesRequested, object: nil)
+    }
+
+    @objc private func checkPermissions() {
+        EchoPilotWindowController.shared.showApp()
+        NotificationCenter.default.post(name: EchoPilotNotifications.checkPermissionsRequested, object: nil)
+    }
+
+    private func rebuildContent() {
+        guard let window else { return }
+        let language = AppSettings.currentLanguage
+        window.title = L10n.text("prefs.title", language: language)
+
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 320))
+        contentView.autoresizingMask = [.width, .height]
+
+        let title = label(L10n.text("prefs.title", language: language), frame: NSRect(x: 24, y: 274, width: 452, height: 28), font: .boldSystemFont(ofSize: 20))
+        contentView.addSubview(title)
+
+        let languageTitle = label(L10n.text("prefs.language", language: language), frame: NSRect(x: 24, y: 236, width: 452, height: 22), font: .boldSystemFont(ofSize: 14))
+        contentView.addSubview(languageTitle)
+
+        let selected = AppSettings.preferredUILanguage
+        let systemButton = radioButton(title: L10n.text("language.system", language: language), tag: 0, selected: selected == .system, frame: NSRect(x: 24, y: 208, width: 220, height: 22))
+        let germanButton = radioButton(title: L10n.text("language.german", language: language), tag: 1, selected: selected == .german, frame: NSRect(x: 24, y: 181, width: 220, height: 22))
+        let englishButton = radioButton(title: L10n.text("language.english", language: language), tag: 2, selected: selected == .english, frame: NSRect(x: 24, y: 154, width: 220, height: 22))
+        contentView.addSubview(systemButton)
+        contentView.addSubview(germanButton)
+        contentView.addSubview(englishButton)
+
+        let help = label(L10n.text("prefs.language.help", language: language), frame: NSRect(x: 260, y: 190, width: 216, height: 46), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
+        help.lineBreakMode = .byWordWrapping
+        help.maximumNumberOfLines = 3
+        contentView.addSubview(help)
+
+        let activePreference: AppLanguagePreference = AppSettings.currentLanguage == .german ? .german : .english
+        let active = label(String(format: L10n.text("language.effective", language: language), L10n.text(activePreference == .german ? "language.german" : "language.english", language: language)), frame: NSRect(x: 260, y: 158, width: 216, height: 22), font: .boldSystemFont(ofSize: 11), color: .secondaryLabelColor)
+        contentView.addSubview(active)
+
+        let divider = NSBox(frame: NSRect(x: 24, y: 136, width: 452, height: 1))
+        divider.boxType = .separator
+        contentView.addSubview(divider)
+
+        let maintenanceTitle = label(L10n.text("prefs.maintenance", language: language), frame: NSRect(x: 24, y: 103, width: 452, height: 22), font: .boldSystemFont(ofSize: 14))
+        contentView.addSubview(maintenanceTitle)
+
+        let updateButton = pushButton(title: L10n.text("prefs.checkUpdates", language: language), action: #selector(checkUpdates), frame: NSRect(x: 24, y: 65, width: 180, height: 30))
+        contentView.addSubview(updateButton)
+        let updateHelp = label(L10n.text("prefs.checkUpdates.help", language: language), frame: NSRect(x: 220, y: 62, width: 256, height: 36), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
+        updateHelp.lineBreakMode = .byWordWrapping
+        updateHelp.maximumNumberOfLines = 2
+        contentView.addSubview(updateHelp)
+
+        let permissionsButton = pushButton(title: L10n.text("prefs.checkPermissions", language: language), action: #selector(checkPermissions), frame: NSRect(x: 24, y: 25, width: 180, height: 30))
+        contentView.addSubview(permissionsButton)
+        let permissionsHelp = label(L10n.text("prefs.checkPermissions.help", language: language), frame: NSRect(x: 220, y: 22, width: 256, height: 36), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
+        permissionsHelp.lineBreakMode = .byWordWrapping
+        permissionsHelp.maximumNumberOfLines = 2
+        contentView.addSubview(permissionsHelp)
+
+        window.contentView = contentView
+    }
+
+    private func label(_ text: String, frame: NSRect, font: NSFont, color: NSColor = .labelColor) -> NSTextField {
+        let field = NSTextField(labelWithString: text)
+        field.frame = frame
+        field.font = font
+        field.textColor = color
+        return field
+    }
+
+    private func radioButton(title: String, tag: Int, selected: Bool, frame: NSRect) -> NSButton {
+        let button = NSButton(radioButtonWithTitle: title, target: self, action: #selector(selectLanguage(_:)))
+        button.frame = frame
+        button.tag = tag
+        button.state = selected ? .on : .off
+        return button
+    }
+
+    private func pushButton(title: String, action: Selector, frame: NSRect) -> NSButton {
+        let button = NSButton(title: title, target: self, action: action)
+        button.frame = frame
+        button.bezelStyle = .rounded
+        return button
     }
 
     func windowWillClose(_ notification: Notification) {
