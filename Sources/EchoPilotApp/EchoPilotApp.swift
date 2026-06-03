@@ -1383,6 +1383,8 @@ enum GitHubUpdateChecker {
 }
 
 enum MeetingLibrary {
+    private static let transcriptPreviewProbeBytes = 32 * 1024
+
     static var rootURL: URL {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Documents")
@@ -1402,12 +1404,27 @@ enum MeetingLibrary {
                 let metadata = try? loadMetadata(from: url)
                 let title = metadata?.title.isEmpty == false ? metadata!.title : url.lastPathComponent
                 let inputDir = url.appendingPathComponent("transcription-input", isDirectory: true)
-                let hasTranscript = fm.fileExists(atPath: inputDir.appendingPathComponent("meeting-notes-input.md").path)
-                    && ((try? String(contentsOf: inputDir.appendingPathComponent("meeting-notes-input.md")))?.contains("## Mic transcript") == true)
+                let hasTranscript = transcriptLooksPresent(at: inputDir.appendingPathComponent("meeting-notes-input.md"))
                 let hasSummary = fm.fileExists(atPath: url.appendingPathComponent("summary.md").path)
                 return MeetingRecord(id: url.path, title: title, url: url, createdAt: createdAt, hasTranscript: hasTranscript, hasSummary: hasSummary)
             }
             .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    private static func transcriptLooksPresent(at url: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]), (values.fileSize ?? 0) > 0 else {
+            return false
+        }
+
+        // Older builds used a content scan here, but reading every large
+        // meeting-notes-input.md on every sidebar refresh makes the app feel
+        // sticky after long meetings. Keep this probe intentionally tiny: the
+        // exact badge is less important than a responsive meeting list.
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return true }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: transcriptPreviewProbeBytes), !data.isEmpty else { return true }
+        let prefix = String(decoding: data, as: UTF8.self)
+        return prefix.contains("## Mic transcript") || prefix.contains("## System transcript") || prefix.contains("# EchoPilot") || (values.fileSize ?? 0) > transcriptPreviewProbeBytes
     }
 
     static func loadMetadata(from sessionDir: URL) throws -> MeetingMetadata? {
@@ -1593,6 +1610,7 @@ final class MeetingCaptureViewModel: ObservableObject {
     private var startedAt: Date?
     private var transcriptionTask: Task<Void, Never>?
     private var suggestionSnoozedUntil: Date?
+    private let transcriptPreviewMaxBytes = 64 * 1024
 
     init() {
         refreshAudioInputs()
@@ -1867,16 +1885,24 @@ final class MeetingCaptureViewModel: ObservableObject {
             return
         }
         do {
-            let text = try String(contentsOf: url, encoding: .utf8)
-            let limit = 220_000
-            if text.count > limit {
-                transcriptPreviewText = String(text.prefix(limit)) + "\n\n" + L10n.text("transcription.previewTruncated")
+            let values = try url.resourceValues(forKeys: [.fileSizeKey])
+            let fileSize = values.fileSize ?? 0
+            let data = try readPrefix(url: url, maxBytes: transcriptPreviewMaxBytes)
+            let text = String(decoding: data, as: UTF8.self)
+            if fileSize > transcriptPreviewMaxBytes {
+                transcriptPreviewText = text + "\n\n" + L10n.text("transcription.previewTruncated")
             } else {
                 transcriptPreviewText = text
             }
         } catch {
             transcriptPreviewText = "Konnte \(kind.title) nicht laden: \(error.localizedDescription)"
         }
+    }
+
+    private func readPrefix(url: URL, maxBytes: Int) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        return try handle.read(upToCount: maxBytes) ?? Data()
     }
 
     func shareableURL(_ url: URL?) -> URL? {
