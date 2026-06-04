@@ -4,6 +4,10 @@ EchoPilot is a native macOS meeting-capture app for recording system audio and m
 
 It is designed for local-first meeting workflows: record only after consent, transcribe locally, review transcripts in-app, then export summaries, decisions, questions, and action items.
 
+## App Preview
+
+![EchoPilot main window showing meeting detection, recording controls, live levels, and transcription settings](docs/assets/echopilot-main-window.png)
+
 ## Features
 
 - Native macOS system-audio capture via ScreenCaptureKit
