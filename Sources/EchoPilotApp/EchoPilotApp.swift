@@ -1485,6 +1485,7 @@ enum AppSettings {
     private static let batchScheduleEnabledKey = "batchScheduleEnabled"
     private static let batchScheduledMinuteOfDayKey = "batchScheduledMinuteOfDay"
     private static let lastScheduledBatchRunKey = "lastScheduledBatchRun"
+    private static let transcriptPreviewExpandedKey = "transcriptPreviewExpanded"
     static let preferredUILanguageKey = "preferredUILanguage"
 
     static var preferredUILanguage: AppLanguagePreference {
@@ -1558,6 +1559,11 @@ enum AppSettings {
             if let newValue, !newValue.isEmpty { UserDefaults.standard.set(newValue, forKey: lastScheduledBatchRunKey) }
             else { UserDefaults.standard.removeObject(forKey: lastScheduledBatchRunKey) }
         }
+    }
+
+    static var transcriptPreviewExpanded: Bool {
+        get { UserDefaults.standard.bool(forKey: transcriptPreviewExpandedKey) }
+        set { UserDefaults.standard.set(newValue, forKey: transcriptPreviewExpandedKey) }
     }
 
     private static func dateForMinuteOfDay(_ minuteOfDay: Int) -> Date {
@@ -1718,6 +1724,9 @@ enum L10n {
         "transcript.statusTitle": [.german: "Transkriptionsstatus", .english: "Transcription Status"],
         "transcripts.title": [.german: "Transkripte", .english: "Transcripts"],
         "transcripts.view": [.german: "Ansicht", .english: "View"],
+        "transcripts.show": [.german: "Transkripte anzeigen", .english: "Show transcripts"],
+        "transcripts.hide": [.german: "Transkripte einklappen", .english: "Collapse transcripts"],
+        "transcripts.collapsed": [.german: "%@ ausgeblendet", .english: "%@ hidden"],
         "transcripts.openFile": [.german: "Datei öffnen", .english: "Open File"],
         "transcripts.share": [.german: "Teilen…", .english: "Share…"],
         "artifacts.title": [.german: "Meeting Notes & Export", .english: "Meeting Notes & Export"],
@@ -2178,6 +2187,9 @@ final class MeetingCaptureViewModel: ObservableObject {
     @Published var transcriptPreviewKind: TranscriptPreviewKind = .timeline
     @Published var transcriptPreviewTitle = "Timeline"
     @Published var transcriptPreviewText = L10n.text("transcription.previewEmpty")
+    @Published var transcriptPreviewExpanded = AppSettings.transcriptPreviewExpanded {
+        didSet { AppSettings.transcriptPreviewExpanded = transcriptPreviewExpanded }
+    }
     @Published var meetingSuggestion: MeetingSuggestion?
     @Published var meetingDeviceStatus = MeetingDeviceStatus()
     @Published var showPermissionsOverlay = false
@@ -3723,41 +3735,62 @@ struct ContentView: View {
     private var transcriptPreviewBox: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label(text("transcripts.title"), systemImage: "text.alignleft")
+                Button {
+                    vm.transcriptPreviewExpanded.toggle()
+                } label: {
+                    Label(
+                        text("transcripts.title"),
+                        systemImage: vm.transcriptPreviewExpanded ? "chevron.down" : "chevron.right"
+                    )
                     .font(.headline)
-                Spacer()
-                Picker(text("transcripts.view"), selection: Binding(
-                    get: { vm.transcriptPreviewKind },
-                    set: { vm.loadTranscriptPreview($0) }
-                )) {
-                    ForEach(TranscriptPreviewKind.allCases) { kind in
-                        Text(kind.title(language: language)).tag(kind)
-                    }
                 }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 520)
+                .buttonStyle(.plain)
+                .help(text(vm.transcriptPreviewExpanded ? "transcripts.hide" : "transcripts.show"))
+                Image(systemName: "text.alignleft")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if vm.transcriptPreviewExpanded {
+                    Picker(text("transcripts.view"), selection: Binding(
+                        get: { vm.transcriptPreviewKind },
+                        set: { vm.loadTranscriptPreview($0) }
+                    )) {
+                        ForEach(TranscriptPreviewKind.allCases) { kind in
+                            Text(kind.title(language: language)).tag(kind)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 520)
+                }
             }
 
-            ScrollView {
-                Text(vm.transcriptPreviewText)
-                    .font(.system(.caption, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                    .padding(10)
+            if vm.transcriptPreviewExpanded {
+                ScrollView {
+                    Text(vm.transcriptPreviewText)
+                        .font(.system(.caption, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .padding(10)
+                }
+                .frame(minHeight: 180, maxHeight: 320)
+                .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+            } else {
+                Text(formatted("transcripts.collapsed", vm.transcriptPreviewKind.title(language: language)))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .frame(minHeight: 180, maxHeight: 320)
-            .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
 
-            HStack {
-                if let url = vm.transcriptURL(for: vm.transcriptPreviewKind) {
-                    Text(url.lastPathComponent)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button(text("transcripts.openFile")) { NSWorkspace.shared.open(url) }
-                        .disabled(!vm.fileExists(url))
-                    Button(text("transcripts.share")) { shareFile(url) }
-                        .disabled(!vm.fileExists(url))
+            if vm.transcriptPreviewExpanded {
+                HStack {
+                    if let url = vm.transcriptURL(for: vm.transcriptPreviewKind) {
+                        Text(url.lastPathComponent)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button(text("transcripts.openFile")) { NSWorkspace.shared.open(url) }
+                            .disabled(!vm.fileExists(url))
+                        Button(text("transcripts.share")) { shareFile(url) }
+                            .disabled(!vm.fileExists(url))
+                    }
                 }
             }
         }
