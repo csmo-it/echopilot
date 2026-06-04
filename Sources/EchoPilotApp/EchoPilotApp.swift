@@ -7,6 +7,7 @@ import AppKit
 import ApplicationServices
 import AudioToolbox
 import Foundation
+import IOKit
 import UserNotifications
 
 struct TrackStats: Equatable {
@@ -829,6 +830,32 @@ enum AppDependencies {
     }
 }
 
+enum SystemIdleMonitor {
+    static var idleSeconds: TimeInterval {
+        var iterator: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOHIDSystem"), &iterator) == KERN_SUCCESS else {
+            return 0
+        }
+        defer { IOObjectRelease(iterator) }
+
+        let entry = IOIteratorNext(iterator)
+        guard entry != 0 else { return 0 }
+        defer { IOObjectRelease(entry) }
+
+        var properties: Unmanaged<CFMutableDictionary>?
+        guard IORegistryEntryCreateCFProperties(entry, &properties, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+              let rawProperties = properties?.takeRetainedValue()
+        else {
+            return 0
+        }
+        let dictionary = rawProperties as NSDictionary
+        guard let idleNanoseconds = dictionary["HIDIdleTime"] as? NSNumber else {
+            return 0
+        }
+        return idleNanoseconds.doubleValue / 1_000_000_000
+    }
+}
+
 enum EchoPilotUserNotifier {
     static func requestAuthorization() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
@@ -1453,6 +1480,11 @@ enum AppSettings {
     private static let whisperModelKey = "whisperModel"
     private static let whisperLanguageKey = "whisperLanguage"
     private static let dismissedUpdateVersionKey = "dismissedUpdateVersion"
+    private static let batchIdleEnabledKey = "batchIdleEnabled"
+    private static let batchIdleMinutesKey = "batchIdleMinutes"
+    private static let batchScheduleEnabledKey = "batchScheduleEnabled"
+    private static let batchScheduledMinuteOfDayKey = "batchScheduledMinuteOfDay"
+    private static let lastScheduledBatchRunKey = "lastScheduledBatchRun"
     static let preferredUILanguageKey = "preferredUILanguage"
 
     static var preferredUILanguage: AppLanguagePreference {
@@ -1488,6 +1520,52 @@ enum AppSettings {
             if let newValue, !newValue.isEmpty { UserDefaults.standard.set(newValue, forKey: dismissedUpdateVersionKey) }
             else { UserDefaults.standard.removeObject(forKey: dismissedUpdateVersionKey) }
         }
+    }
+
+    static var batchIdleEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: batchIdleEnabledKey) }
+        set { UserDefaults.standard.set(newValue, forKey: batchIdleEnabledKey) }
+    }
+
+    static var batchIdleMinutes: Int {
+        get {
+            let value = UserDefaults.standard.integer(forKey: batchIdleMinutesKey)
+            return value > 0 ? value : 10
+        }
+        set { UserDefaults.standard.set(max(2, min(120, newValue)), forKey: batchIdleMinutesKey) }
+    }
+
+    static var batchScheduleEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: batchScheduleEnabledKey) }
+        set { UserDefaults.standard.set(newValue, forKey: batchScheduleEnabledKey) }
+    }
+
+    static var batchScheduledTime: Date {
+        get {
+            let stored = UserDefaults.standard.object(forKey: batchScheduledMinuteOfDayKey) as? Int ?? 120
+            return dateForMinuteOfDay(stored)
+        }
+        set {
+            let components = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+            let minuteOfDay = (components.hour ?? 0) * 60 + (components.minute ?? 0)
+            UserDefaults.standard.set(minuteOfDay, forKey: batchScheduledMinuteOfDayKey)
+        }
+    }
+
+    static var lastScheduledBatchRun: String? {
+        get { UserDefaults.standard.string(forKey: lastScheduledBatchRunKey) }
+        set {
+            if let newValue, !newValue.isEmpty { UserDefaults.standard.set(newValue, forKey: lastScheduledBatchRunKey) }
+            else { UserDefaults.standard.removeObject(forKey: lastScheduledBatchRunKey) }
+        }
+    }
+
+    private static func dateForMinuteOfDay(_ minuteOfDay: Int) -> Date {
+        var components = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        components.hour = max(0, min(23, minuteOfDay / 60))
+        components.minute = max(0, min(59, minuteOfDay % 60))
+        components.second = 0
+        return Calendar.current.date(from: components) ?? Date()
     }
 }
 
@@ -1587,6 +1665,13 @@ enum L10n {
         "transcription.auto": [.german: "Auto", .english: "Auto"],
         "transcription.models.none": [.german: "Installiert: keine erkannt · Modelle werden beim ersten Transkribieren geladen.", .english: "Installed: none detected · models are downloaded on first transcription."],
         "transcription.models.installed": [.german: "Installiert: %@", .english: "Installed: %@"],
+        "batch.title": [.german: "Batch-Transkription", .english: "Batch Transcription"],
+        "batch.transcribeAll": [.german: "Alle offenen transkribieren", .english: "Transcribe All Open"],
+        "batch.cancel": [.german: "Batch abbrechen", .english: "Cancel Batch"],
+        "batch.autoIdle": [.german: "Automatisch bei Leerlauf", .english: "Auto-run when idle"],
+        "batch.idleMinutes": [.german: "nach %d Min.", .english: "after %d min."],
+        "batch.schedule": [.german: "Täglich um", .english: "Daily at"],
+        "batch.openCount": [.german: "%d offen", .english: "%d open"],
         "modelHint.turbo": [.german: "Apple Silicon schnell", .english: "fast on Apple Silicon"],
         "modelHint.small": [.german: "Standard/leicht", .english: "standard/lightweight"],
         "modelHint.large": [.german: "Qualität/langsam", .english: "quality/slow"],
@@ -1640,6 +1725,9 @@ enum L10n {
         "artifacts.shareSummary": [.german: "Summary teilen…", .english: "Share Summary…"],
         "artifacts.kiExport": [.german: "Für KI-Agent exportieren", .english: "Export for AI Agent"],
         "artifacts.shareKI": [.german: "KI-Export teilen…", .english: "Share AI Export…"],
+        "artifacts.collectKI": [.german: "KI-Exports sammeln", .english: "Collect AI Exports"],
+        "artifacts.openExportFolder": [.german: "Export-Ordner öffnen", .english: "Open Export Folder"],
+        "artifacts.exportFolder": [.german: "Sammelordner: %@", .english: "Collection folder: %@"],
         "consent.title": [.german: "Consent Reminder", .english: "Consent Reminder"],
         "consent.text": [.german: "Vor echten Meetings klar ansagen: „Ich lasse zur Nachbereitung ein Transkript/Meeting Notes erstellen.“ Keine heimlichen Aufnahmen.", .english: "Before real meetings, clearly say: “I use EchoPilot to create a transcript/meeting notes for follow-up.” No secret recordings."],
 
@@ -1692,11 +1780,21 @@ enum L10n {
         "transcription.progressWhisperStart": [.german: "Starte lokales Whisper (%@, Sprache: %@). Erster Lauf kann wegen Installation/Modelldownload dauern…", .english: "Starting local Whisper (%@, language: %@). First run can take a while because of setup/model download…"],
         "transcription.progressWhisperRunning": [.german: "Whisper läuft… %@", .english: "Whisper running… %@"],
         "transcription.progressFinished": [.german: "Transkription fertig: meeting-notes-input.md aktualisiert.", .english: "Transcription finished: meeting-notes-input.md updated."],
+        "batch.none": [.german: "Keine nicht transkribierten Meetings gefunden.", .english: "No untranscribed meetings found."],
+        "batch.started": [.german: "Batch-Transkription gestartet: %d Meetings.", .english: "Batch transcription started: %d meetings."],
+        "batch.item": [.german: "Transkribiere %d/%d: %@", .english: "Transcribing %d/%d: %@"],
+        "batch.finished": [.german: "Batch fertig: %d transkribiert, %d übersprungen.", .english: "Batch finished: %d transcribed, %d skipped."],
+        "batch.failed": [.german: "Batch-Transkription fehlgeschlagen: %@", .english: "Batch transcription failed: %@"],
+        "batch.cancelled": [.german: "Batch-Transkription abgebrochen.", .english: "Batch transcription cancelled."],
+        "batch.busy": [.german: "Batch wartet: Aufnahme, Verarbeitung oder Transkription läuft.", .english: "Batch waiting: recording, processing, or transcription is running."],
+        "batch.idleWaiting": [.german: "Idle-Autopilot aktiv: wartet auf %d Min. Leerlauf.", .english: "Idle autopilot active: waiting for %d min. idle."],
         "artifact.noMeeting": [.german: "Kein Meeting ausgewählt.", .english: "No meeting selected."],
         "artifact.summaryCreated": [.german: "Summary-Entwurf erstellt: %@", .english: "Summary draft created: %@"],
         "artifact.summaryFailed": [.german: "Summary fehlgeschlagen: %@", .english: "Summary failed: %@"],
         "artifact.exportCreated": [.german: "KI-Agent-Export erstellt: %@", .english: "AI-agent export created: %@"],
         "artifact.exportFailed": [.german: "Export fehlgeschlagen: %@", .english: "Export failed: %@"],
+        "artifact.exportsCollected": [.german: "%d KI-Exports gesammelt in %@", .english: "%d AI exports collected in %@"],
+        "artifact.exportsCollectFailed": [.german: "KI-Exports konnten nicht gesammelt werden: %@", .english: "AI exports could not be collected: %@"],
         "processing.started": [.german: "Vorbereitung gestartet…", .english: "Preparation started…"],
         "processing.finished": [.german: "Fertig: transcription-input vorbereitet. Transkription ist noch ausstehend.", .english: "Done: transcription-input prepared. Transcription is still pending."],
         "processing.readyForTranscription": [.german: "Vorbereitung fertig. Bereit für Transkription.", .english: "Preparation complete. Ready for transcription."],
@@ -1874,6 +1972,10 @@ enum MeetingLibrary {
 }
 
 enum MeetingArtifactGenerator {
+    static var sharedExportFolder: URL {
+        MeetingLibrary.rootURL.appendingPathComponent("AI Agent Exports", isDirectory: true)
+    }
+
     static func generateSummary(sessionDir: URL, metadata: MeetingMetadata) throws -> URL {
         let inputURL = sessionDir.appendingPathComponent("transcription-input/meeting-notes-input.md")
         guard FileManager.default.fileExists(atPath: inputURL.path) else {
@@ -1964,6 +2066,51 @@ enum MeetingArtifactGenerator {
         try export.write(to: out, atomically: true, encoding: .utf8)
         return out
     }
+
+    static func collectKIAgentExports(for meetings: [MeetingRecord]) throws -> (folder: URL, copied: Int) {
+        let folder = sharedExportFolder
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var copied = 0
+        for meeting in meetings where meeting.hasTranscript {
+            let metadata = (try? MeetingLibrary.loadMetadata(from: meeting.url)) ?? MeetingMetadata(
+                title: meeting.title,
+                participants: "",
+                customerProject: "",
+                consentConfirmed: false,
+                updatedAt: ISO8601DateFormatter().string(from: Date()),
+                archived: meeting.isArchived
+            )
+            let source = try generateKIAgentExport(sessionDir: meeting.url, metadata: metadata)
+            let baseName = sanitizedFileName(
+                metadata.title.isEmpty ? meeting.title : metadata.title,
+                fallback: meeting.url.lastPathComponent
+            )
+            let sessionName = sanitizedFileName(meeting.url.lastPathComponent, fallback: UUID().uuidString)
+            let destination = folder.appendingPathComponent("\(datePrefix(for: meeting.createdAt))-\(baseName)-\(sessionName)-ki-agent-export.md")
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.copyItem(at: source, to: destination)
+            copied += 1
+        }
+        return (folder, copied)
+    }
+
+    private static func datePrefix(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HHmm"
+        return formatter.string(from: date)
+    }
+
+    private static func sanitizedFileName(_ value: String, fallback: String) -> String {
+        let source = value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? fallback : value
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_ "))
+        let filtered = source.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
+        let collapsed = String(filtered)
+            .replacingOccurrences(of: #"[-\s]+"#, with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-_ "))
+        return collapsed.isEmpty ? fallback : String(collapsed.prefix(80))
+    }
 }
 
 @MainActor
@@ -1991,8 +2138,22 @@ final class MeetingCaptureViewModel: ObservableObject {
     @Published var processingStatus = L10n.text("processing.waiting")
     @Published var transcriptionInputDir: URL?
     @Published var isTranscribing = false
+    @Published var isBatchTranscribing = false
     @Published var transcriptionProgress = 0.0
     @Published var transcriptionStatus = L10n.text("transcription.notStarted")
+    @Published var batchOpenCount = 0
+    @Published var batchIdleEnabled = AppSettings.batchIdleEnabled {
+        didSet { AppSettings.batchIdleEnabled = batchIdleEnabled }
+    }
+    @Published var batchIdleMinutes = AppSettings.batchIdleMinutes {
+        didSet { AppSettings.batchIdleMinutes = batchIdleMinutes }
+    }
+    @Published var batchScheduleEnabled = AppSettings.batchScheduleEnabled {
+        didSet { AppSettings.batchScheduleEnabled = batchScheduleEnabled }
+    }
+    @Published var batchScheduledTime = AppSettings.batchScheduledTime {
+        didSet { AppSettings.batchScheduledTime = batchScheduledTime }
+    }
     @Published var notesInputURL: URL?
     @Published var meetings: [MeetingRecord] = []
     @Published var showArchivedMeetings = false {
@@ -2043,11 +2204,13 @@ final class MeetingCaptureViewModel: ObservableObject {
     private let service = MeetingCaptureService()
     private var timer: Timer?
     private var detectorTimer: Timer?
+    private var batchSchedulerTimer: Timer?
     private var startedAt: Date?
     private var transcriptionTask: Task<Void, Never>?
     private var didNotifyForCurrentDetectedMeeting = false
     private let transcriptPreviewMaxBytes = 64 * 1024
     private var lastDisplayedElapsedSecond = -1
+    private var lastIdleBatchAttempt: Date?
 
     init() {
         refreshAudioInputs()
@@ -2057,6 +2220,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         refreshPermissions(showOverlayIfNeeded: true)
         refreshDependencies(showOverlayIfNeeded: true)
         startMeetingDetector()
+        startBatchScheduler()
         checkForUpdatesOnStartup()
     }
 
@@ -2270,6 +2434,7 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     func refreshMeetings() {
         meetings = MeetingLibrary.loadMeetings(includeArchived: showArchivedMeetings)
+        batchOpenCount = untranscribedMeetings().count
         if let selectedMeetingID, !meetings.contains(where: { $0.id == selectedMeetingID }) {
             prepareNewRecording()
         }
@@ -2457,6 +2622,10 @@ final class MeetingCaptureViewModel: ObservableObject {
             transcriptionStatus = L10n.text("transcription.noRecording")
             return
         }
+        guard !isBatchTranscribing else {
+            transcriptionStatus = L10n.text("batch.busy")
+            return
+        }
         transcriptionTask?.cancel()
         transcriptionTask = Task {
             isTranscribing = true
@@ -2487,7 +2656,147 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     func cancelTranscription() {
         transcriptionTask?.cancel()
-        transcriptionStatus = L10n.text("transcription.cancelling")
+        transcriptionStatus = isBatchTranscribing ? L10n.text("batch.cancelled") : L10n.text("transcription.cancelling")
+    }
+
+    func startBatchTranscriptionManually() {
+        startBatchTranscription(reason: "manual")
+    }
+
+    private func startBatchTranscription(reason: String) {
+        refreshDependencies(showOverlayIfNeeded: false)
+        guard ffmpegInstalled else {
+            showPermissionsOverlay = true
+            status = L10n.text("status.dependenciesRequired")
+            return
+        }
+        guard !isRecording, !isStarting, !isProcessing, !isTranscribing else {
+            transcriptionStatus = L10n.text("batch.busy")
+            return
+        }
+        let queue = untranscribedMeetings()
+        batchOpenCount = queue.count
+        guard !queue.isEmpty else {
+            transcriptionStatus = L10n.text("batch.none")
+            return
+        }
+
+        transcriptionTask?.cancel()
+        transcriptionTask = Task {
+            isTranscribing = true
+            isBatchTranscribing = true
+            transcriptionProgress = 0
+            transcriptionStatus = L10n.format("batch.started", queue.count)
+            var completed = 0
+            var skipped = 0
+
+            for (index, meeting) in queue.enumerated() {
+                if Task.isCancelled { break }
+                if isRecording || isStarting {
+                    skipped += queue.count - index
+                    break
+                }
+                let current = index + 1
+                transcriptionStatus = L10n.format("batch.item", current, queue.count, meeting.title)
+                do {
+                    let notesURL = try await LocalTranscriber.transcribe(sessionDir: meeting.url, model: whisperModel, language: whisperLanguage) { [weak self] progress, status in
+                        guard let self else { return }
+                        let overall = (Double(index) + progress) / Double(queue.count)
+                        self.transcriptionProgress = overall
+                        self.transcriptionStatus = "\(L10n.format("batch.item", current, queue.count, meeting.title))\n\(status)"
+                    }
+                    completed += 1
+                    if selectedMeetingID == meeting.id {
+                        notesInputURL = notesURL
+                        transcriptionInputDir = notesURL.deletingLastPathComponent()
+                        loadTranscriptPreview(.timeline)
+                    }
+                } catch {
+                    if Task.isCancelled { break }
+                    skipped += 1
+                    transcriptionStatus = L10n.format("batch.failed", error.localizedDescription)
+                }
+                refreshMeetings()
+            }
+
+            if Task.isCancelled {
+                transcriptionStatus = L10n.text("batch.cancelled")
+            } else {
+                transcriptionProgress = 1
+                transcriptionStatus = L10n.format("batch.finished", completed, skipped)
+            }
+            isBatchTranscribing = false
+            isTranscribing = false
+            transcriptionTask = nil
+            refreshMeetings()
+            if reason != "manual", completed > 0 {
+                status = transcriptionStatus
+            }
+        }
+    }
+
+    private func untranscribedMeetings() -> [MeetingRecord] {
+        MeetingLibrary.loadMeetings(includeArchived: true)
+            .filter { !$0.hasTranscript }
+            .sorted { $0.createdAt < $1.createdAt }
+    }
+
+    private func startBatchScheduler() {
+        batchSchedulerTimer?.invalidate()
+        batchSchedulerTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.checkBatchAutomation()
+            }
+        }
+        Task { @MainActor in
+            checkBatchAutomation()
+        }
+    }
+
+    private func checkBatchAutomation() {
+        batchOpenCount = untranscribedMeetings().count
+        guard batchOpenCount > 0 else { return }
+        guard !isRecording, !isStarting, !isProcessing, !isTranscribing else { return }
+        guard !MeetingCallDetector.deviceStatus().inMeeting else { return }
+
+        if batchIdleEnabled {
+            let idleSeconds = SystemIdleMonitor.idleSeconds
+            if idleSeconds >= TimeInterval(batchIdleMinutes * 60), shouldAttemptIdleBatch() {
+                lastIdleBatchAttempt = Date()
+                startBatchTranscription(reason: "idle")
+                return
+            }
+            if idleSeconds < TimeInterval(batchIdleMinutes * 60) {
+                transcriptionStatus = L10n.format("batch.idleWaiting", batchIdleMinutes)
+            }
+        }
+
+        if batchScheduleEnabled, shouldRunScheduledBatchNow() {
+            AppSettings.lastScheduledBatchRun = scheduledRunKey(for: Date())
+            startBatchTranscription(reason: "schedule")
+        }
+    }
+
+    private func shouldAttemptIdleBatch() -> Bool {
+        guard let lastIdleBatchAttempt else { return true }
+        return Date().timeIntervalSince(lastIdleBatchAttempt) > 1800
+    }
+
+    private func shouldRunScheduledBatchNow() -> Bool {
+        let now = Date()
+        let calendar = Calendar.current
+        let nowComponents = calendar.dateComponents([.hour, .minute], from: now)
+        let scheduleComponents = calendar.dateComponents([.hour, .minute], from: batchScheduledTime)
+        let nowMinute = (nowComponents.hour ?? 0) * 60 + (nowComponents.minute ?? 0)
+        let scheduleMinute = (scheduleComponents.hour ?? 0) * 60 + (scheduleComponents.minute ?? 0)
+        return nowMinute >= scheduleMinute && AppSettings.lastScheduledBatchRun != scheduledRunKey(for: now)
+    }
+
+    private func scheduledRunKey(for date: Date) -> String {
+        let day = ISO8601DateFormatter()
+        day.formatOptions = [.withFullDate]
+        let components = Calendar.current.dateComponents([.hour, .minute], from: batchScheduledTime)
+        return "\(day.string(from: date))-\(components.hour ?? 0)-\(components.minute ?? 0)"
     }
 
     func generateSummary() {
@@ -2521,6 +2830,22 @@ final class MeetingCaptureViewModel: ObservableObject {
         } catch {
             artifactStatus = L10n.format("artifact.exportFailed", error.localizedDescription)
         }
+    }
+
+    func collectKIAgentExports() {
+        do {
+            let result = try MeetingArtifactGenerator.collectKIAgentExports(for: MeetingLibrary.loadMeetings(includeArchived: true))
+            artifactStatus = L10n.format("artifact.exportsCollected", result.copied, result.folder.path)
+            NSWorkspace.shared.open(result.folder)
+        } catch {
+            artifactStatus = L10n.format("artifact.exportsCollectFailed", error.localizedDescription)
+        }
+    }
+
+    func openKIAgentExportFolder() {
+        let folder = MeetingArtifactGenerator.sharedExportFolder
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(folder)
     }
 
     private func postProcess(session: RecordingSession) async {
@@ -3194,6 +3519,33 @@ struct ContentView: View {
             Text(installedModelSummary)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Divider()
+            HStack(spacing: 10) {
+                Button(text("batch.transcribeAll")) { vm.startBatchTranscriptionManually() }
+                    .disabled(vm.batchOpenCount == 0 || vm.isRecording || vm.isProcessing || vm.isTranscribing)
+                if vm.isBatchTranscribing {
+                    Button(text("batch.cancel")) { vm.cancelTranscription() }
+                }
+                Text(formatted("batch.openCount", vm.batchOpenCount))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            Toggle(text("batch.autoIdle"), isOn: $vm.batchIdleEnabled)
+                .toggleStyle(.checkbox)
+            Stepper(
+                formatted("batch.idleMinutes", vm.batchIdleMinutes),
+                value: $vm.batchIdleMinutes,
+                in: 2...120,
+                step: 5
+            )
+            .disabled(!vm.batchIdleEnabled)
+            HStack {
+                Toggle(text("batch.schedule"), isOn: $vm.batchScheduleEnabled)
+                    .toggleStyle(.checkbox)
+                DatePicker("", selection: $vm.batchScheduledTime, displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+                    .disabled(!vm.batchScheduleEnabled)
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -3435,7 +3787,16 @@ struct ContentView: View {
                     if let url = vm.shareableURL(vm.kiAgentExportURL) { shareFile(url) }
                 }
                 .disabled(vm.shareableURL(vm.kiAgentExportURL) == nil)
+                Button(text("artifacts.collectKI")) { vm.collectKIAgentExports() }
+                    .disabled(vm.isRecording || vm.isTranscribing)
+                Button(text("artifacts.openExportFolder")) { vm.openKIAgentExportFolder() }
             }
+            Text(formatted("artifacts.exportFolder", MeetingArtifactGenerator.sharedExportFolder.path))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
             Text(vm.artifactStatus)
                 .font(.callout)
                 .foregroundStyle(.secondary)

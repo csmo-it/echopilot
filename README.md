@@ -17,11 +17,13 @@ It is designed for local-first meeting workflows: record only after consent, tra
 - Microsoft Teams title/visible-participant detection via local Accessibility data when permission is granted
 - Transcript status indicators and archive/unarchive controls in the meeting sidebar
 - Local Whisper transcription with Apple Silicon/MPS auto-detect and CPU fallback
+- Batch transcription for all untranscribed meetings, with manual, idle-time, and daily scheduled triggers
 - Timestamped transcript outputs (`txt`, `vtt`, `srt`, `tsv`, `json`)
 - Merged two-track `timeline.md`
 - Lightweight in-app transcript viewer for timeline, AI handoff, system transcript, and microphone transcript
 - Local summary draft generation
 - AI-agent export package for downstream review/task extraction
+- Shared AI-agent export collection folder at `~/Documents/EchoPilot/AI Agent Exports`
 - macOS Share Sheet actions for summaries, AI exports, and transcript files
 - App icon and menu bar status item
 
@@ -114,6 +116,24 @@ EchoPilot assumes Apple Silicon for local transcription optimization:
 - set `WHISPER_DEVICE=cpu` to force CPU fallback
 
 `large-v3` is still available for difficult audio, but it is expected to be slower because EchoPilot transcribes both `system` and `mic` tracks.
+
+## Batch transcription and exports
+
+EchoPilot can transcribe every untranscribed meeting from the meeting library in one serial batch. Batch transcription uses the same local Whisper settings as a single meeting and includes archived meetings, because archive status only hides meetings from the default sidebar view.
+
+Available modes:
+
+- click **Alle offenen transkribieren** / **Transcribe All Open** to start immediately
+- enable idle mode to run once the Mac has had no keyboard/mouse activity for the configured number of minutes
+- enable the daily schedule to run once per day at the selected local time
+
+Automatic batch runs do not start while EchoPilot is recording, already transcribing, post-processing a recording, or when local mic/camera signals suggest an active call. A running batch can be cancelled from the transcription controls.
+
+For downstream agent work, **KI-Exports sammeln** / **Collect AI Exports** creates or refreshes AI-agent exports for transcribed meetings and copies them into:
+
+```text
+~/Documents/EchoPilot/AI Agent Exports
+```
 
 ## macOS permissions
 
