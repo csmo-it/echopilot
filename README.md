@@ -9,14 +9,17 @@ It is designed for local-first meeting workflows: record only after consent, tra
 - Native macOS system-audio capture via ScreenCaptureKit
 - Selected microphone recording
 - Separate `system` and `mic` audio tracks
-- Startup permission overlay for microphone and Screen/System Audio Recording
-- Live level meters for both tracks
+- Startup setup overlay for microphone, Screen/System Audio Recording, Homebrew, and FFmpeg
+- AppKit-backed live level meters for both tracks, isolated from the main SwiftUI refresh loop
 - Meeting history sidebar
-- Conservative meeting/call suggestion banner for Teams, Zoom, Webex, Meet, and similar services
+- Meeting status panel with app-agnostic mic/camera activity detection
+- Best-effort meeting context detection for Teams, Zoom, Webex, Meet, Slack, and browser meetings
+- Microsoft Teams title/visible-participant detection via local Accessibility data when permission is granted
+- Transcript status indicators and archive/unarchive controls in the meeting sidebar
 - Local Whisper transcription with Apple Silicon/MPS auto-detect and CPU fallback
 - Timestamped transcript outputs (`txt`, `vtt`, `srt`, `tsv`, `json`)
 - Merged two-track `timeline.md`
-- In-app transcript viewer for timeline, AI handoff, system transcript, and microphone transcript
+- Lightweight in-app transcript viewer for timeline, AI handoff, system transcript, and microphone transcript
 - Local summary draft generation
 - AI-agent export package for downstream review/task extraction
 - macOS Share Sheet actions for summaries, AI exports, and transcript files
@@ -147,12 +150,14 @@ scripts/diagnose-echopilot-app.sh "/Applications/EchoPilot.app"
 
 ## Meeting/call detection
 
-EchoPilot can suggest a recording when it sees a likely meeting/call window from Teams, Zoom, Webex, Slack, or browser-based Meet. For Microsoft Teams on macOS, it also checks local Teams log markers when available.
+EchoPilot shows meeting status when local device signals suggest an active call. It uses microphone and camera activity as the primary app-agnostic signal, then enriches that status with best-effort context from Teams, Zoom, Webex, Slack, browser-based Meet, visible window titles, and local Teams log markers.
+
+For Microsoft Teams on macOS, EchoPilot can also use Accessibility data when the user has granted permission. In that mode it tries to read the current meeting title and visible participant names from the local Teams window and pre-fill the recording metadata. If Accessibility is not trusted, unavailable, or Teams does not expose the relevant fields, EchoPilot falls back to the lower-level device/window/log signals.
 
 Important:
 
-- Detection is heuristic: local Teams log markers first, then visible app/window titles via ScreenCaptureKit.
-- macOS/Teams do not expose a reliable public local “call started” API for normal desktop apps.
+- Detection is heuristic: device activity is reliable for "something is using mic/camera", while app names, titles, and participants are best effort.
+- macOS/Teams do not expose a reliable public local "call started with full meeting metadata" API for normal desktop apps.
 - EchoPilot never starts recording automatically.
 - The user still has to confirm consent and click Start Recording.
 
