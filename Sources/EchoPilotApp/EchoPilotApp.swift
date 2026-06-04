@@ -4034,16 +4034,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 if vm.transcriptPreviewExpanded {
-                    Picker(text("transcripts.view"), selection: Binding(
-                        get: { vm.transcriptPreviewKind },
-                        set: { vm.loadTranscriptPreview($0) }
-                    )) {
-                        ForEach(TranscriptPreviewKind.allCases) { kind in
-                            Text(kind.title(language: language)).tag(kind)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 520)
+                    transcriptPreviewSelector
                 }
             }
 
@@ -4081,6 +4072,36 @@ struct ContentView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var transcriptPreviewSelector: some View {
+        Menu {
+            ForEach(TranscriptPreviewKind.allCases) { kind in
+                Button {
+                    vm.loadTranscriptPreview(kind)
+                } label: {
+                    if kind == vm.transcriptPreviewKind {
+                        Label(kind.title(language: language), systemImage: "checkmark")
+                    } else {
+                        Text(kind.title(language: language))
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(vm.transcriptPreviewKind.title(language: language))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption.weight(.semibold))
+            .frame(maxWidth: 210, alignment: .trailing)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .help(text("transcripts.view"))
     }
 
     private var artifactBox: some View {
