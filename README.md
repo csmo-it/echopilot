@@ -20,11 +20,12 @@ It is designed for local-first meeting workflows: record only after consent, tra
 - Best-effort meeting context detection for Teams, Zoom, Webex, Meet, Slack, and browser meetings
 - Microsoft Teams title/visible-participant detection via local Accessibility data when permission is granted
 - Transcript status indicators and archive/unarchive controls in the meeting sidebar
+- Append update recordings to an existing meeting, keeping each recording as a separate segment
 - Local Whisper transcription with Apple Silicon/MPS auto-detect and CPU fallback
 - Batch transcription for all untranscribed meetings, with manual, idle-time, and daily scheduled triggers
 - Timestamped transcript outputs (`txt`, `vtt`, `srt`, `tsv`, `json`)
 - Merged two-track `timeline.md`
-- Lightweight in-app transcript viewer for timeline, AI handoff, system transcript, and microphone transcript
+- Lightweight in-app transcript viewer for combined timeline, combined AI handoff, timeline, system transcript, and microphone transcript
 - Local summary draft generation
 - AI-agent export package for downstream review/task extraction
 - Shared AI-agent export collection folder at `~/Documents/EchoPilot/AI Agent Exports`

@@ -292,6 +292,8 @@ struct MeetingDeviceStatus: Equatable {
 }
 
 enum TranscriptPreviewKind: String, CaseIterable, Identifiable, Hashable {
+    case combinedTimeline
+    case combinedHandover
     case timeline
     case kiHandover
     case system
@@ -305,6 +307,8 @@ enum TranscriptPreviewKind: String, CaseIterable, Identifiable, Hashable {
 
     func title(language: AppLanguage) -> String {
         switch self {
+        case .combinedTimeline: return L10n.text("preview.combinedTimeline", language: language)
+        case .combinedHandover: return L10n.text("preview.combinedHandover", language: language)
         case .timeline: return L10n.text("preview.timeline", language: language)
         case .kiHandover: return L10n.text("preview.kiHandover", language: language)
         case .system: return L10n.text("preview.system", language: language)
@@ -314,6 +318,8 @@ enum TranscriptPreviewKind: String, CaseIterable, Identifiable, Hashable {
 
     var relativePath: String {
         switch self {
+        case .combinedTimeline: return "transcription-input/combined-timeline.md"
+        case .combinedHandover: return "transcription-input/combined-meeting-notes-input.md"
         case .timeline: return "transcription-input/timeline.md"
         case .kiHandover: return "transcription-input/meeting-notes-input.md"
         case .system: return "transcription-input/system.txt"
@@ -1397,8 +1403,11 @@ struct MeetingRecord: Identifiable, Equatable {
     let url: URL
     let createdAt: Date
     let hasTranscript: Bool
+    let isFullyTranscribed: Bool
     let hasSummary: Bool
     let isArchived: Bool
+    let segmentCount: Int
+    let pendingTranscriptCount: Int
 
     func subtitle(language: AppLanguage = AppSettings.currentLanguage) -> String {
         let formatter = DateFormatter()
@@ -1406,7 +1415,14 @@ struct MeetingRecord: Identifiable, Equatable {
         formatter.timeStyle = .short
         formatter.locale = language == .german ? Locale(identifier: "de_DE") : Locale(identifier: "en_US")
         var parts = [formatter.string(from: createdAt)]
-        parts.append(hasTranscript ? L10n.text("meeting.transcribed", language: language) : L10n.text("meeting.notTranscribed", language: language))
+        if segmentCount > 1 {
+            parts.append(L10n.format("meeting.parts", language: language, segmentCount))
+        }
+        if pendingTranscriptCount > 0 {
+            parts.append(L10n.format("meeting.pendingTranscripts", language: language, pendingTranscriptCount))
+        } else {
+            parts.append(hasTranscript ? L10n.text("meeting.transcribed", language: language) : L10n.text("meeting.notTranscribed", language: language))
+        }
         if hasSummary { parts.append("Summary") }
         if isArchived { parts.append(L10n.text("meeting.archived", language: language)) }
         return parts.joined(separator: " · ")
@@ -1616,6 +1632,8 @@ enum L10n {
         "sidebar.emptyArchiveHidden": [.german: "Keine aktiven Meetings. Archiv anzeigen, um ausgeblendete Meetings zu sehen.", .english: "No active meetings. Show archive to view hidden meetings."],
         "meeting.transcribed": [.german: "Transkribiert", .english: "Transcribed"],
         "meeting.notTranscribed": [.german: "Nicht transkribiert", .english: "Not transcribed"],
+        "meeting.parts": [.german: "%d Teile", .english: "%d parts"],
+        "meeting.pendingTranscripts": [.german: "%d offen", .english: "%d pending"],
         "meeting.archived": [.german: "Archiviert", .english: "Archived"],
         "meeting.archive": [.german: "Archivieren", .english: "Archive"],
         "meeting.unarchive": [.german: "Aus Archiv zurückholen", .english: "Unarchive"],
@@ -1659,6 +1677,7 @@ enum L10n {
         "meeting.field.customerProject": [.german: "Kunde / Projekt", .english: "Customer / Project"],
         "meeting.consent": [.german: "Teilnehmer wurden über Transkript/Meeting Notes informiert", .english: "Participants were informed about transcript/meeting notes"],
         "meeting.newHint": [.german: "Neue Aufnahme: Titel/Metadaten jetzt vorbereiten; gespeichert wird beim Start der Aufnahme.", .english: "New recording: prepare title/metadata now; it will be saved when recording starts."],
+        "meeting.updateTitle": [.german: "Update zu %@", .english: "Update for %@"],
         "meeting.delete": [.german: "Meeting löschen", .english: "Delete Meeting"],
 
         "input.title": [.german: "Mikrofon/Input", .english: "Microphone/Input"],
@@ -1688,6 +1707,7 @@ enum L10n {
         "button.stopRecording": [.german: "Aufnahme stoppen", .english: "Stop Recording"],
         "button.starting": [.german: "Starte…", .english: "Starting…"],
         "button.newRecording": [.german: "Neue Aufnahme", .english: "New Recording"],
+        "button.appendUpdate": [.german: "Update anhängen", .english: "Append Update"],
         "button.transcribe": [.german: "Transkribieren", .english: "Transcribe"],
         "button.cancel": [.german: "Abbrechen", .english: "Cancel"],
         "actions.more": [.german: "Weitere Aktionen", .english: "More Actions"],
@@ -1740,6 +1760,8 @@ enum L10n {
         "consent.title": [.german: "Consent Reminder", .english: "Consent Reminder"],
         "consent.text": [.german: "Vor echten Meetings klar ansagen: „Ich lasse zur Nachbereitung ein Transkript/Meeting Notes erstellen.“ Keine heimlichen Aufnahmen.", .english: "Before real meetings, clearly say: “I use EchoPilot to create a transcript/meeting notes for follow-up.” No secret recordings."],
 
+        "preview.combinedTimeline": [.german: "Kombinierte Timeline", .english: "Combined Timeline"],
+        "preview.combinedHandover": [.german: "Kombinierter KI-Handover", .english: "Combined AI Handover"],
         "preview.timeline": [.german: "Timeline", .english: "Timeline"],
         "preview.kiHandover": [.german: "KI-Handover", .english: "AI Handover"],
         "preview.system": [.german: "Systemaudio", .english: "System Audio"],
@@ -1760,6 +1782,7 @@ enum L10n {
         "status.homebrewInstallOpened": [.german: "Homebrew-Installation im Terminal geöffnet. Danach erneut prüfen.", .english: "Homebrew installer opened in Terminal. Check again afterwards."],
         "status.ffmpegInstallOpened": [.german: "FFmpeg-Installation im Terminal geöffnet. Danach erneut prüfen.", .english: "FFmpeg installer opened in Terminal. Check again afterwards."],
         "status.recordingStarted": [.german: "Recording läuft… Systemaudio + Mikrofon werden getrennt gespeichert.", .english: "Recording… system audio and microphone are saved as separate tracks."],
+        "status.appendRecordingStarted": [.german: "Update-Aufnahme läuft für: %@", .english: "Update recording is running for: %@"],
         "status.startFailed": [.german: "Start fehlgeschlagen: %@", .english: "Start failed: %@"],
         "recording.errorStart": [.german: "Recording konnte nicht starten: %@. Prüfe zusätzlich zu Mikrofon auch Datenschutz → Screen & System Audio Recording für EchoPilot/Xcode.", .english: "Recording could not start: %@. In addition to microphone access, check Privacy & Security → Screen & System Audio Recording for EchoPilot/Xcode."],
         "recording.errorEmpty": [.german: "Aufnahme hatte keine Audio-Buffer und wurde verworfen. Prüfe Screen & System Audio Recording sowie Mikrofon-Berechtigung für genau die App, die du startest.", .english: "Recording had no audio buffers and was discarded. Check Screen & System Audio Recording and microphone permissions for the exact app you start."],
@@ -1768,6 +1791,12 @@ enum L10n {
         "status.stopFailed": [.german: "Stop fehlgeschlagen: %@", .english: "Stop failed: %@"],
         "status.newPrepared": [.german: "Neue Aufnahme vorbereitet.", .english: "New recording prepared."],
         "status.newArtifactHint": [.german: "Neue Aufnahme vorbereitet. Titel eintragen und Start Recording klicken.", .english: "New recording prepared. Enter a title and click Start Recording."],
+        "status.appendPrepared": [.german: "Update-Aufnahme vorbereitet für: %@", .english: "Update recording prepared for: %@"],
+        "status.appended": [.german: "Update %@ an %@ angehängt. Danach transkribieren, um die kombinierte Timeline zu aktualisieren.", .english: "Update %@ appended to %@. Transcribe afterwards to refresh the combined timeline."],
+        "status.appendBusy": [.german: "Anhängen nicht möglich während Aufnahme/Verarbeitung/Transkription läuft.", .english: "Cannot append while recording, processing, or transcription is running."],
+        "status.appendNoTarget": [.german: "Bitte zuerst ein bestehendes Meeting auswählen.", .english: "Select an existing meeting first."],
+        "status.appendTargetMissing": [.german: "Ziel-Meeting für das Update wurde nicht gefunden.", .english: "The target meeting for this update was not found."],
+        "status.appendFailed": [.german: "Update konnte nicht angehängt werden: %@", .english: "Update could not be appended: %@"],
         "status.deleteBusy": [.german: "Löschen nicht möglich während Aufnahme/Verarbeitung läuft.", .english: "Cannot delete while recording/processing is running."],
         "status.deleteNone": [.german: "Kein Meeting zum Löschen ausgewählt.", .english: "No meeting selected for deletion."],
         "status.deleted": [.german: "Meeting in den Papierkorb verschoben: %@", .english: "Meeting moved to Trash: %@"],
@@ -1786,6 +1815,7 @@ enum L10n {
         "transcription.previewMissing": [.german: "Datei noch nicht vorhanden: %@", .english: "File does not exist yet: %@"],
         "transcription.previewTruncated": [.german: "… gekürzt für die Vorschau. Datei öffnen/teilen für den vollständigen Inhalt.", .english: "… truncated for preview. Open/share the file for the full content."],
         "transcription.progressStarted": [.german: "Transkription gestartet…", .english: "Transcription started…"],
+        "transcription.part": [.german: "Transkribiere Teil %d/%d: %@", .english: "Transcribing part %d/%d: %@"],
         "transcription.progressWhisperStart": [.german: "Starte lokales Whisper (%@, Sprache: %@). Erster Lauf kann wegen Installation/Modelldownload dauern…", .english: "Starting local Whisper (%@, language: %@). First run can take a while because of setup/model download…"],
         "transcription.progressWhisperRunning": [.german: "Whisper läuft… %@", .english: "Whisper running… %@"],
         "transcription.progressFinished": [.german: "Transkription fertig: meeting-notes-input.md aktualisiert.", .english: "Transcription finished: meeting-notes-input.md updated."],
@@ -1937,13 +1967,27 @@ enum MeetingLibrary {
                 let title = metadata?.title.isEmpty == false ? metadata!.title : url.lastPathComponent
                 let inputDir = url.appendingPathComponent("transcription-input", isDirectory: true)
                 let hasTranscript = transcriptLooksPresent(at: inputDir.appendingPathComponent("meeting-notes-input.md"))
+                    || transcriptLooksPresent(at: inputDir.appendingPathComponent("combined-meeting-notes-input.md"))
+                let segments = segmentDirectories(for: url)
+                let pendingTranscriptCount = (hasTranscript ? 0 : 1) + segments.filter { !transcriptLooksPresent(at: $0.appendingPathComponent("transcription-input/meeting-notes-input.md")) }.count
                 let hasSummary = fm.fileExists(atPath: url.appendingPathComponent("summary.md").path)
-                return MeetingRecord(id: url.path, title: title, url: url, createdAt: createdAt, hasTranscript: hasTranscript, hasSummary: hasSummary, isArchived: isArchived)
+                return MeetingRecord(
+                    id: url.path,
+                    title: title,
+                    url: url,
+                    createdAt: createdAt,
+                    hasTranscript: hasTranscript,
+                    isFullyTranscribed: hasTranscript && pendingTranscriptCount == 0,
+                    hasSummary: hasSummary,
+                    isArchived: isArchived,
+                    segmentCount: 1 + segments.count,
+                    pendingTranscriptCount: pendingTranscriptCount
+                )
             }
             .sorted { $0.createdAt > $1.createdAt }
     }
 
-    private static func transcriptLooksPresent(at url: URL) -> Bool {
+    static func transcriptLooksPresent(at url: URL) -> Bool {
         guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]), (values.fileSize ?? 0) > 0 else {
             return false
         }
@@ -1956,7 +2000,127 @@ enum MeetingLibrary {
         defer { try? handle.close() }
         guard let data = try? handle.read(upToCount: transcriptPreviewProbeBytes), !data.isEmpty else { return true }
         let prefix = String(decoding: data, as: UTF8.self)
-        return prefix.contains("## Mic transcript") || prefix.contains("## System transcript") || prefix.contains("# EchoPilot") || (values.fileSize ?? 0) > transcriptPreviewProbeBytes
+        return prefix.contains("## Mic transcript")
+            || prefix.contains("## System transcript")
+            || prefix.contains("## Plain mic transcript")
+            || prefix.contains("## Timestamped mic transcript")
+            || prefix.contains("## Combined transcript source")
+            || prefix.contains("# EchoPilot")
+            || (values.fileSize ?? 0) > transcriptPreviewProbeBytes
+    }
+
+    static func segmentRoot(for sessionDir: URL) -> URL {
+        sessionDir.appendingPathComponent("segments", isDirectory: true)
+    }
+
+    static func segmentDirectories(for sessionDir: URL) -> [URL] {
+        let root = segmentRoot(for: sessionDir)
+        guard let entries = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey], options: [.skipsHiddenFiles]) else {
+            return []
+        }
+        return entries
+            .filter { $0.hasDirectoryPath }
+            .sorted { left, right in
+                let leftValues = try? left.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+                let rightValues = try? right.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+                let leftDate = leftValues?.creationDate ?? leftValues?.contentModificationDate ?? Date.distantPast
+                let rightDate = rightValues?.creationDate ?? rightValues?.contentModificationDate ?? Date.distantPast
+                if leftDate == rightDate { return left.lastPathComponent < right.lastPathComponent }
+                return leftDate < rightDate
+            }
+    }
+
+    static func untranscribedSessionDirectories(for meetingDir: URL) -> [URL] {
+        let rootInput = meetingDir.appendingPathComponent("transcription-input/meeting-notes-input.md")
+        var dirs: [URL] = transcriptLooksPresent(at: rootInput) ? [] : [meetingDir]
+        dirs.append(contentsOf: segmentDirectories(for: meetingDir).filter { segmentDir in
+            !transcriptLooksPresent(at: segmentDir.appendingPathComponent("transcription-input/meeting-notes-input.md"))
+        })
+        return dirs
+    }
+
+    static func appendSegment(from sessionDir: URL, to meetingDir: URL) throws -> URL {
+        guard FileManager.default.fileExists(atPath: meetingDir.path) else {
+            throw RuntimeError("Ziel-Meeting existiert nicht mehr: \(meetingDir.path)")
+        }
+        guard sessionDir.standardizedFileURL != meetingDir.standardizedFileURL else {
+            throw RuntimeError("Dieses Meeting kann nicht an sich selbst angehängt werden.")
+        }
+        let root = segmentRoot(for: meetingDir)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        var destination = root.appendingPathComponent(sessionDir.lastPathComponent, isDirectory: true)
+        if FileManager.default.fileExists(atPath: destination.path) {
+            destination = root.appendingPathComponent("\(sessionDir.lastPathComponent)-\(Int(Date().timeIntervalSince1970))", isDirectory: true)
+        }
+        try FileManager.default.moveItem(at: sessionDir, to: destination)
+        return destination
+    }
+
+    static func rebuildCombinedTranscripts(for meetingDir: URL) throws -> (timeline: URL, handover: URL)? {
+        let segments = segmentDirectories(for: meetingDir)
+        guard !segments.isEmpty else { return nil }
+
+        let sources = [meetingDir] + segments
+        var timelineSections: [String] = []
+        var handoverSections: [String] = []
+        for (index, sourceDir) in sources.enumerated() {
+            let label = index == 0 ? "Original" : "Update \(index)"
+            let sourceName = sourceDir.lastPathComponent
+            let inputDir = sourceDir.appendingPathComponent("transcription-input", isDirectory: true)
+            let timelineURL = inputDir.appendingPathComponent("timeline.md")
+            let notesURL = inputDir.appendingPathComponent("meeting-notes-input.md")
+            let timeline = readExistingText(at: timelineURL) ?? "_Noch keine Timeline fuer diesen Teil vorhanden._"
+            let notes = readExistingText(at: notesURL) ?? "_Noch kein KI-Handover fuer diesen Teil vorhanden._"
+            timelineSections.append("""
+            ## \(label) — \(sourceName)
+
+            \(timeline)
+            """)
+            handoverSections.append("""
+            ## \(label) — \(sourceName)
+
+            \(notes)
+            """)
+        }
+
+        let inputDir = meetingDir.appendingPathComponent("transcription-input", isDirectory: true)
+        try FileManager.default.createDirectory(at: inputDir, withIntermediateDirectories: true)
+        let timelineOut = inputDir.appendingPathComponent("combined-timeline.md")
+        let handoverOut = inputDir.appendingPathComponent("combined-meeting-notes-input.md")
+        let combinedTimeline = """
+        # EchoPilot Combined Timeline
+
+        Dieses Meeting besteht aus \(sources.count) Teilen. Die Originalaufnahmen und Einzeltranskripte bleiben in ihren jeweiligen Ordnern erhalten; diese Datei fuehrt sie als Update-Timeline zusammen.
+
+        \(timelineSections.joined(separator: "\n\n---\n\n"))
+        """
+        let combinedHandover = """
+        # Meeting Notes Input — Combined
+
+        ## KI-agent output contract
+
+        Werte alle folgenden Meeting-Teile als einen gemeinsamen Verlauf aus. Markiere Entscheidungen, offene Fragen und Action Items mit Evidenz aus dem jeweiligen Teil. Erfinde nichts; Unsicherheit ausdruecklich kennzeichnen.
+
+        1. **Kurzfassung** — 5–10 concise German bullet points
+        2. **Entscheidungen** — decision, context, source/speaker, evidence quote or timestamp
+        3. **Offene Fragen** — question, context, source/speaker, evidence quote or timestamp
+        4. **Action Items** — task, owner, due date, status, evidence quote or timestamp
+        5. **Task-Vorschläge** — task title, risk, automation mode, next step
+        6. **Approval Gates** — anything external/customer-facing/destructive that needs approval
+        7. **Unklar / Daten fehlen** — contradictions, missing names, bad transcript spots
+
+        ## Combined transcript source
+
+        \(handoverSections.joined(separator: "\n\n---\n\n"))
+        """
+        try combinedTimeline.write(to: timelineOut, atomically: true, encoding: .utf8)
+        try combinedHandover.write(to: handoverOut, atomically: true, encoding: .utf8)
+        return (timelineOut, handoverOut)
+    }
+
+    private static func readExistingText(at url: URL) -> String? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return try? String(contentsOf: url)
     }
 
     static func loadMetadata(from sessionDir: URL) throws -> MeetingMetadata? {
@@ -1985,8 +2149,16 @@ enum MeetingArtifactGenerator {
         MeetingLibrary.rootURL.appendingPathComponent("AI Agent Exports", isDirectory: true)
     }
 
+    private static func preferredTranscriptURL(for sessionDir: URL) -> URL {
+        let combined = sessionDir.appendingPathComponent("transcription-input/combined-meeting-notes-input.md")
+        if FileManager.default.fileExists(atPath: combined.path) {
+            return combined
+        }
+        return sessionDir.appendingPathComponent("transcription-input/meeting-notes-input.md")
+    }
+
     static func generateSummary(sessionDir: URL, metadata: MeetingMetadata) throws -> URL {
-        let inputURL = sessionDir.appendingPathComponent("transcription-input/meeting-notes-input.md")
+        let inputURL = preferredTranscriptURL(for: sessionDir)
         guard FileManager.default.fileExists(atPath: inputURL.path) else {
             throw RuntimeError("meeting-notes-input.md fehlt. Bitte erst transkribieren.")
         }
@@ -2035,7 +2207,7 @@ enum MeetingArtifactGenerator {
     }
 
     static func generateKIAgentExport(sessionDir: URL, metadata: MeetingMetadata) throws -> URL {
-        let inputURL = sessionDir.appendingPathComponent("transcription-input/meeting-notes-input.md")
+        let inputURL = preferredTranscriptURL(for: sessionDir)
         guard FileManager.default.fileExists(atPath: inputURL.path) else {
             throw RuntimeError("meeting-notes-input.md fehlt. Bitte erst transkribieren.")
         }
@@ -2169,6 +2341,8 @@ final class MeetingCaptureViewModel: ObservableObject {
         didSet { refreshMeetings() }
     }
     @Published var selectedMeetingID: String?
+    @Published var appendTargetMeetingID: String?
+    @Published var appendTargetMeetingTitle: String?
     @Published var meetingTitle = ""
     @Published var participants = ""
     @Published var customerProject = ""
@@ -2223,6 +2397,10 @@ final class MeetingCaptureViewModel: ObservableObject {
     private let transcriptPreviewMaxBytes = 64 * 1024
     private var lastDisplayedElapsedSecond = -1
     private var lastIdleBatchAttempt: Date?
+
+    var isAppendingRecording: Bool {
+        appendTargetMeetingID != nil
+    }
 
     init() {
         refreshAudioInputs()
@@ -2375,13 +2553,22 @@ final class MeetingCaptureViewModel: ObservableObject {
                 startedAt = session.startedAt
                 outputDir = session.outputDir
                 selectedMeetingID = session.outputDir.path
+                if let appendTargetMeetingTitle {
+                    meetingTitle = L10n.format("meeting.updateTitle", appendTargetMeetingTitle)
+                }
                 saveCurrentMetadata()
                 isRecording = true
-                status = L10n.text("status.recordingStarted")
+                if let appendTargetMeetingTitle {
+                    status = L10n.format("status.appendRecordingStarted", appendTargetMeetingTitle)
+                } else {
+                    status = L10n.text("status.recordingStarted")
+                }
                 meetingSuggestion = nil
                 startTimer()
             } catch {
                 status = L10n.format("status.startFailed", error.localizedDescription)
+                appendTargetMeetingID = nil
+                appendTargetMeetingTitle = nil
             }
             isStarting = false
         }
@@ -2398,15 +2585,63 @@ final class MeetingCaptureViewModel: ObservableObject {
                     status = L10n.format("status.recordingSaved", session.outputDir.path)
                     saveCurrentMetadata()
                     await postProcess(session: session)
+                    do {
+                        try finishAppendIfNeeded(session: session)
+                    } catch {
+                        appendTargetMeetingID = nil
+                        appendTargetMeetingTitle = nil
+                        status = L10n.format("status.appendFailed", error.localizedDescription)
+                    }
                     refreshMeetings()
                 } else {
                     status = L10n.text("status.noActiveRecording")
                 }
             } catch {
                 isRecording = false
+                appendTargetMeetingID = nil
+                appendTargetMeetingTitle = nil
                 status = L10n.format("status.stopFailed", error.localizedDescription)
             }
         }
+    }
+
+    func appendRecordingToSelectedMeeting() {
+        guard !isRecording, !isStarting, !isProcessing, !isTranscribing else {
+            status = L10n.text("status.appendBusy")
+            return
+        }
+        guard let selectedMeetingID, let meeting = meetings.first(where: { $0.id == selectedMeetingID }) else {
+            status = L10n.text("status.appendNoTarget")
+            return
+        }
+        appendTargetMeetingID = selectedMeetingID
+        appendTargetMeetingTitle = meeting.title
+        status = L10n.format("status.appendPrepared", meeting.title)
+        start()
+    }
+
+    private func finishAppendIfNeeded(session: RecordingSession) throws {
+        guard let targetID = appendTargetMeetingID else { return }
+        let allMeetings = MeetingLibrary.loadMeetings(includeArchived: true)
+        guard let target = allMeetings.first(where: { $0.id == targetID }) else {
+            appendTargetMeetingID = nil
+            appendTargetMeetingTitle = nil
+            throw RuntimeError(L10n.text("status.appendTargetMissing"))
+        }
+
+        let movedSegment = try MeetingLibrary.appendSegment(from: session.outputDir, to: target.url)
+        _ = try? MeetingLibrary.rebuildCombinedTranscripts(for: target.url)
+        appendTargetMeetingID = nil
+        appendTargetMeetingTitle = nil
+        refreshMeetings()
+        if let updated = MeetingLibrary.loadMeetings(includeArchived: true).first(where: { $0.id == target.id }) {
+            selectMeeting(updated)
+        } else {
+            selectedMeetingID = target.id
+            outputDir = target.url
+        }
+        status = L10n.format("status.appended", movedSegment.lastPathComponent, target.title)
+        transcriptionStatus = L10n.text("transcription.notStarted")
     }
 
     func openOutputFolder() {
@@ -2454,6 +2689,8 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     func prepareNewRecording() {
         selectedMeetingID = nil
+        appendTargetMeetingID = nil
+        appendTargetMeetingTitle = nil
         outputDir = nil
         transcriptionInputDir = nil
         notesInputURL = nil
@@ -2494,6 +2731,8 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     func selectMeeting(_ meeting: MeetingRecord) {
         selectedMeetingID = meeting.id
+        appendTargetMeetingID = nil
+        appendTargetMeetingTitle = nil
         outputDir = meeting.url
         transcriptionInputDir = meeting.url.appendingPathComponent("transcription-input", isDirectory: true)
         notesInputURL = transcriptionInputDir?.appendingPathComponent("meeting-notes-input.md")
@@ -2512,7 +2751,8 @@ final class MeetingCaptureViewModel: ObservableObject {
             consentConfirmed = false
             selectedMeetingArchived = false
         }
-        loadTranscriptPreview(.timeline)
+        let combinedTimeline = meeting.url.appendingPathComponent("transcription-input/combined-timeline.md")
+        loadTranscriptPreview(FileManager.default.fileExists(atPath: combinedTimeline.path) ? .combinedTimeline : .timeline)
         status = L10n.format("status.meetingSelected", meeting.title)
     }
 
@@ -2645,14 +2885,11 @@ final class MeetingCaptureViewModel: ObservableObject {
             transcriptionStatus = L10n.text("transcription.started")
             do {
                 saveCurrentMetadata()
-                let notesURL = try await LocalTranscriber.transcribe(sessionDir: outputDir, model: whisperModel, language: whisperLanguage) { [weak self] progress, status in
-                    self?.transcriptionProgress = progress
-                    self?.transcriptionStatus = status
-                }
+                let notesURL = try await transcribeMeeting(at: outputDir, title: meetingTitle.isEmpty ? outputDir.lastPathComponent : meetingTitle)
                 notesInputURL = notesURL
                 transcriptionInputDir = notesURL.deletingLastPathComponent()
                 transcriptionStatus = L10n.text("transcription.finished")
-                loadTranscriptPreview(.timeline)
+                loadTranscriptPreview(fileExists(outputDir.appendingPathComponent("transcription-input/combined-timeline.md")) ? .combinedTimeline : .timeline)
                 refreshMeetings()
             } catch {
                 if Task.isCancelled {
@@ -2711,7 +2948,7 @@ final class MeetingCaptureViewModel: ObservableObject {
                 let current = index + 1
                 transcriptionStatus = L10n.format("batch.item", current, queue.count, meeting.title)
                 do {
-                    let notesURL = try await LocalTranscriber.transcribe(sessionDir: meeting.url, model: whisperModel, language: whisperLanguage) { [weak self] progress, status in
+                    let notesURL = try await transcribeMeeting(at: meeting.url, title: meeting.title) { [weak self] progress, status in
                         guard let self else { return }
                         let overall = (Double(index) + progress) / Double(queue.count)
                         self.transcriptionProgress = overall
@@ -2721,7 +2958,7 @@ final class MeetingCaptureViewModel: ObservableObject {
                     if selectedMeetingID == meeting.id {
                         notesInputURL = notesURL
                         transcriptionInputDir = notesURL.deletingLastPathComponent()
-                        loadTranscriptPreview(.timeline)
+                        loadTranscriptPreview(fileExists(meeting.url.appendingPathComponent("transcription-input/combined-timeline.md")) ? .combinedTimeline : .timeline)
                     }
                 } catch {
                     if Task.isCancelled { break }
@@ -2749,8 +2986,44 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     private func untranscribedMeetings() -> [MeetingRecord] {
         MeetingLibrary.loadMeetings(includeArchived: true)
-            .filter { !$0.hasTranscript }
+            .filter { !$0.isFullyTranscribed }
             .sorted { $0.createdAt < $1.createdAt }
+    }
+
+    private func transcribeMeeting(
+        at meetingDir: URL,
+        title: String,
+        progress: (@MainActor (Double, String) -> Void)? = nil
+    ) async throws -> URL {
+        let pending = MeetingLibrary.untranscribedSessionDirectories(for: meetingDir)
+        let sessionsToTranscribe = pending.isEmpty ? [meetingDir] : pending
+        var latestNotesURL: URL?
+
+        for (index, sessionDir) in sessionsToTranscribe.enumerated() {
+            if Task.isCancelled { throw CancellationError() }
+            let segmentLabel = sessionsToTranscribe.count > 1
+                ? L10n.format("transcription.part", index + 1, sessionsToTranscribe.count, title)
+                : title
+            let notesURL = try await LocalTranscriber.transcribe(sessionDir: sessionDir, model: whisperModel, language: whisperLanguage) { [weak self] itemProgress, status in
+                let overall = (Double(index) + itemProgress) / Double(sessionsToTranscribe.count)
+                let combinedStatus = sessionsToTranscribe.count > 1 ? "\(segmentLabel)\n\(status)" : status
+                if let progress {
+                    progress(overall, combinedStatus)
+                } else {
+                    self?.transcriptionProgress = overall
+                    self?.transcriptionStatus = combinedStatus
+                }
+            }
+            latestNotesURL = notesURL
+        }
+
+        if let combined = try MeetingLibrary.rebuildCombinedTranscripts(for: meetingDir) {
+            return combined.handover
+        }
+        guard let latestNotesURL else {
+            throw RuntimeError("Transcription finished but no notes file was produced")
+        }
+        return latestNotesURL
     }
 
     private func startBatchScheduler() {
@@ -3420,9 +3693,15 @@ struct ContentView: View {
     }
 
     private func meetingTranscriptBadge(_ meeting: MeetingRecord) -> some View {
-        Image(systemName: meeting.hasTranscript ? "checkmark.circle.fill" : "circle.dashed")
-            .foregroundStyle(meeting.hasTranscript ? .green : .secondary)
-            .help(text(meeting.hasTranscript ? "meeting.transcribed" : "meeting.notTranscribed"))
+        let isPending = meeting.pendingTranscriptCount > 0
+        let systemName = meeting.isFullyTranscribed ? "checkmark.circle.fill" : (isPending ? "exclamationmark.circle.fill" : "circle.dashed")
+        let color: Color = meeting.isFullyTranscribed ? .green : (isPending ? .orange : .secondary)
+        let help = meeting.isFullyTranscribed
+            ? text("meeting.transcribed")
+            : (isPending ? formatted("meeting.pendingTranscripts", meeting.pendingTranscriptCount) : text("meeting.notTranscribed"))
+        return Image(systemName: systemName)
+            .foregroundStyle(color)
+            .help(help)
     }
 
     private var mainPanel: some View {
@@ -3579,6 +3858,9 @@ struct ContentView: View {
             Button(text("button.newRecording")) { vm.prepareNewRecording() }
                 .disabled(vm.isRecording || vm.isStarting)
 
+            Button(text("button.appendUpdate")) { vm.appendRecordingToSelectedMeeting() }
+                .disabled(vm.selectedMeetingID == nil || vm.isRecording || vm.isStarting || vm.isProcessing || vm.isTranscribing)
+
             Button(text("button.transcribe")) { vm.transcribeCurrentRecording() }
                 .disabled(vm.outputDir == nil || vm.isRecording || vm.isProcessing || vm.isTranscribing)
 
@@ -3613,6 +3895,8 @@ struct ContentView: View {
             Divider()
             Button(text("actions.saveMetadata")) { vm.saveCurrentMetadata() }
                 .disabled(vm.outputDir == nil)
+            Button(text("button.appendUpdate")) { vm.appendRecordingToSelectedMeeting() }
+                .disabled(vm.selectedMeetingID == nil || vm.isRecording || vm.isStarting || vm.isProcessing || vm.isTranscribing)
             Button(text(vm.selectedMeetingArchived ? "meeting.unarchive" : "meeting.archive")) {
                 vm.setArchiveForSelectedMeeting(!vm.selectedMeetingArchived)
             }
