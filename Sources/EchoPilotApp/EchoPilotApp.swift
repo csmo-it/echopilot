@@ -1429,6 +1429,16 @@ struct MeetingRecord: Identifiable, Equatable {
     }
 }
 
+struct MeetingArtifactTarget: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let sessionDir: URL
+    let transcriptURL: URL
+    let summaryURL: URL
+    let kiAgentExportURL: URL
+    let usesCombinedTranscript: Bool
+}
+
 struct MeetingMetadata: Codable, Equatable {
     var title: String
     var participants: String
@@ -1757,6 +1767,10 @@ enum L10n {
         "artifacts.collectKI": [.german: "KI-Exports sammeln", .english: "Collect AI Exports"],
         "artifacts.openExportFolder": [.german: "Export-Ordner öffnen", .english: "Open Export Folder"],
         "artifacts.exportFolder": [.german: "Sammelordner: %@", .english: "Collection folder: %@"],
+        "artifacts.target": [.german: "Quelle", .english: "Source"],
+        "artifacts.targetAll": [.german: "Alle Transkripte", .english: "All Transcripts"],
+        "artifacts.targetOriginal": [.german: "Originalaufnahme", .english: "Original Recording"],
+        "artifacts.targetUpdate": [.german: "Update %d", .english: "Update %d"],
         "consent.title": [.german: "Consent Reminder", .english: "Consent Reminder"],
         "consent.text": [.german: "Vor echten Meetings klar ansagen: „Ich lasse zur Nachbereitung ein Transkript/Meeting Notes erstellen.“ Keine heimlichen Aufnahmen.", .english: "Before real meetings, clearly say: “I use EchoPilot to create a transcript/meeting notes for follow-up.” No secret recordings."],
 
@@ -2158,7 +2172,20 @@ enum MeetingArtifactGenerator {
     }
 
     static func generateSummary(sessionDir: URL, metadata: MeetingMetadata) throws -> URL {
-        let inputURL = preferredTranscriptURL(for: sessionDir)
+        return try generateSummary(
+            sessionDir: sessionDir,
+            metadata: metadata,
+            transcriptURL: preferredTranscriptURL(for: sessionDir),
+            outputURL: sessionDir.appendingPathComponent("summary.md")
+        )
+    }
+
+    static func generateSummary(
+        sessionDir: URL,
+        metadata: MeetingMetadata,
+        transcriptURL inputURL: URL,
+        outputURL out: URL
+    ) throws -> URL {
         guard FileManager.default.fileExists(atPath: inputURL.path) else {
             throw RuntimeError("meeting-notes-input.md fehlt. Bitte erst transkribieren.")
         }
@@ -2201,13 +2228,25 @@ enum MeetingArtifactGenerator {
         \(excerpt)
         ```
         """
-        let out = sessionDir.appendingPathComponent("summary.md")
         try summary.write(to: out, atomically: true, encoding: .utf8)
         return out
     }
 
     static func generateKIAgentExport(sessionDir: URL, metadata: MeetingMetadata) throws -> URL {
-        let inputURL = preferredTranscriptURL(for: sessionDir)
+        return try generateKIAgentExport(
+            sessionDir: sessionDir,
+            metadata: metadata,
+            transcriptURL: preferredTranscriptURL(for: sessionDir),
+            outputURL: sessionDir.appendingPathComponent("ki-agent-export.md")
+        )
+    }
+
+    static func generateKIAgentExport(
+        sessionDir: URL,
+        metadata: MeetingMetadata,
+        transcriptURL inputURL: URL,
+        outputURL out: URL
+    ) throws -> URL {
         guard FileManager.default.fileExists(atPath: inputURL.path) else {
             throw RuntimeError("meeting-notes-input.md fehlt. Bitte erst transkribieren.")
         }
@@ -2243,7 +2282,6 @@ enum MeetingArtifactGenerator {
 
         \(transcript)
         """
-        let out = sessionDir.appendingPathComponent("ki-agent-export.md")
         try export.write(to: out, atomically: true, encoding: .utf8)
         return out
     }
@@ -2356,6 +2394,7 @@ final class MeetingCaptureViewModel: ObservableObject {
     }
     @Published var whisperModels: [WhisperModelInfo] = WhisperModelInfo.available()
     @Published var artifactStatus = L10n.text("artifact.none")
+    @Published var artifactTargetID: String?
     @Published var summaryURL: URL?
     @Published var kiAgentExportURL: URL?
     @Published var transcriptPreviewKind: TranscriptPreviewKind = .timeline
@@ -2400,6 +2439,74 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     var isAppendingRecording: Bool {
         appendTargetMeetingID != nil
+    }
+
+    var artifactTargets: [MeetingArtifactTarget] {
+        guard let outputDir else { return [] }
+        let segments = MeetingLibrary.segmentDirectories(for: outputDir)
+        if segments.isEmpty {
+            return [
+                MeetingArtifactTarget(
+                    id: "session:\(outputDir.path)",
+                    title: L10n.text("artifacts.targetOriginal"),
+                    sessionDir: outputDir,
+                    transcriptURL: outputDir.appendingPathComponent("transcription-input/meeting-notes-input.md"),
+                    summaryURL: outputDir.appendingPathComponent("summary.md"),
+                    kiAgentExportURL: outputDir.appendingPathComponent("ki-agent-export.md"),
+                    usesCombinedTranscript: false
+                )
+            ]
+        }
+
+        var targets = [
+            MeetingArtifactTarget(
+                id: "all:\(outputDir.path)",
+                title: L10n.text("artifacts.targetAll"),
+                sessionDir: outputDir,
+                transcriptURL: outputDir.appendingPathComponent("transcription-input/combined-meeting-notes-input.md"),
+                summaryURL: outputDir.appendingPathComponent("summary.md"),
+                kiAgentExportURL: outputDir.appendingPathComponent("ki-agent-export.md"),
+                usesCombinedTranscript: true
+            ),
+            MeetingArtifactTarget(
+                id: "session:\(outputDir.path)",
+                title: L10n.text("artifacts.targetOriginal"),
+                sessionDir: outputDir,
+                transcriptURL: outputDir.appendingPathComponent("transcription-input/meeting-notes-input.md"),
+                summaryURL: outputDir.appendingPathComponent("summary-original.md"),
+                kiAgentExportURL: outputDir.appendingPathComponent("ki-agent-export-original.md"),
+                usesCombinedTranscript: false
+            )
+        ]
+        targets.append(contentsOf: segments.enumerated().map { index, segment in
+            MeetingArtifactTarget(
+                id: "session:\(segment.path)",
+                title: L10n.format("artifacts.targetUpdate", index + 1),
+                sessionDir: segment,
+                transcriptURL: segment.appendingPathComponent("transcription-input/meeting-notes-input.md"),
+                summaryURL: segment.appendingPathComponent("summary.md"),
+                kiAgentExportURL: segment.appendingPathComponent("ki-agent-export.md"),
+                usesCombinedTranscript: false
+            )
+        })
+        return targets
+    }
+
+    var selectedArtifactTarget: MeetingArtifactTarget? {
+        let targets = artifactTargets
+        guard !targets.isEmpty else { return nil }
+        if let artifactTargetID, let selected = targets.first(where: { $0.id == artifactTargetID }) {
+            return selected
+        }
+        return targets.first
+    }
+
+    var selectedArtifactSummaryURL: URL? {
+        selectedArtifactTarget?.summaryURL
+    }
+
+    var selectedArtifactKIAgentExportURL: URL? {
+        selectedArtifactTarget?.kiAgentExportURL
     }
 
     init() {
@@ -2501,6 +2608,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         if outputDir == nil && summaryURL == nil && kiAgentExportURL == nil {
             artifactStatus = L10n.text("artifact.none")
         }
+        syncArtifactTargetSelection()
         if transcriptPreviewText == L10n.text("transcription.previewEmpty", language: .german) || transcriptPreviewText == L10n.text("transcription.previewEmpty", language: .english) {
             transcriptPreviewText = L10n.text("transcription.previewEmpty")
         } else if let outputDir, FileManager.default.fileExists(atPath: outputDir.path) {
@@ -2696,6 +2804,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         notesInputURL = nil
         summaryURL = nil
         kiAgentExportURL = nil
+        artifactTargetID = nil
         transcriptPreviewKind = .timeline
         transcriptPreviewTitle = "Timeline"
         transcriptPreviewText = L10n.text("transcription.previewEmpty")
@@ -2738,6 +2847,8 @@ final class MeetingCaptureViewModel: ObservableObject {
         notesInputURL = transcriptionInputDir?.appendingPathComponent("meeting-notes-input.md")
         summaryURL = meeting.url.appendingPathComponent("summary.md")
         kiAgentExportURL = meeting.url.appendingPathComponent("ki-agent-export.md")
+        artifactTargetID = nil
+        syncArtifactTargetSelection()
         if let metadata = try? MeetingLibrary.loadMetadata(from: meeting.url) {
             meetingTitle = metadata.title
             participants = metadata.participants
@@ -2754,6 +2865,26 @@ final class MeetingCaptureViewModel: ObservableObject {
         let combinedTimeline = meeting.url.appendingPathComponent("transcription-input/combined-timeline.md")
         loadTranscriptPreview(FileManager.default.fileExists(atPath: combinedTimeline.path) ? .combinedTimeline : .timeline)
         status = L10n.format("status.meetingSelected", meeting.title)
+    }
+
+    func selectArtifactTarget(_ target: MeetingArtifactTarget) {
+        artifactTargetID = target.id
+        summaryURL = target.summaryURL
+        kiAgentExportURL = target.kiAgentExportURL
+    }
+
+    private func syncArtifactTargetSelection() {
+        let targets = artifactTargets
+        guard !targets.isEmpty else {
+            artifactTargetID = nil
+            summaryURL = nil
+            kiAgentExportURL = nil
+            return
+        }
+        let selected = targets.first(where: { $0.id == artifactTargetID }) ?? targets.first!
+        artifactTargetID = selected.id
+        summaryURL = selected.summaryURL
+        kiAgentExportURL = selected.kiAgentExportURL
     }
 
     func setArchiveForSelectedMeeting(_ archived: Bool) {
@@ -3085,13 +3216,26 @@ final class MeetingCaptureViewModel: ObservableObject {
     }
 
     func generateSummary() {
-        guard let outputDir else {
+        guard outputDir != nil else {
+            artifactStatus = L10n.text("artifact.noMeeting")
+            return
+        }
+        syncArtifactTargetSelection()
+        guard let target = selectedArtifactTarget else {
             artifactStatus = L10n.text("artifact.noMeeting")
             return
         }
         saveCurrentMetadata()
         do {
-            let out = try MeetingArtifactGenerator.generateSummary(sessionDir: outputDir, metadata: currentMetadata())
+            if target.usesCombinedTranscript, let outputDir {
+                _ = try MeetingLibrary.rebuildCombinedTranscripts(for: outputDir)
+            }
+            let out = try MeetingArtifactGenerator.generateSummary(
+                sessionDir: target.sessionDir,
+                metadata: currentMetadata(),
+                transcriptURL: target.transcriptURL,
+                outputURL: target.summaryURL
+            )
             summaryURL = out
             artifactStatus = L10n.format("artifact.summaryCreated", out.lastPathComponent)
             refreshMeetings()
@@ -3101,13 +3245,26 @@ final class MeetingCaptureViewModel: ObservableObject {
     }
 
     func generateKIAgentExport() {
-        guard let outputDir else {
+        guard outputDir != nil else {
+            artifactStatus = L10n.text("artifact.noMeeting")
+            return
+        }
+        syncArtifactTargetSelection()
+        guard let target = selectedArtifactTarget else {
             artifactStatus = L10n.text("artifact.noMeeting")
             return
         }
         saveCurrentMetadata()
         do {
-            let out = try MeetingArtifactGenerator.generateKIAgentExport(sessionDir: outputDir, metadata: currentMetadata())
+            if target.usesCombinedTranscript, let outputDir {
+                _ = try MeetingLibrary.rebuildCombinedTranscripts(for: outputDir)
+            }
+            let out = try MeetingArtifactGenerator.generateKIAgentExport(
+                sessionDir: target.sessionDir,
+                metadata: currentMetadata(),
+                transcriptURL: target.transcriptURL,
+                outputURL: target.kiAgentExportURL
+            )
             kiAgentExportURL = out
             artifactStatus = L10n.format("artifact.exportCreated", out.lastPathComponent)
             NSWorkspace.shared.activateFileViewerSelecting([out])
@@ -4108,13 +4265,20 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 10) {
             Label(text("artifacts.title"), systemImage: "doc.text.magnifyingglass")
                 .font(.headline)
+            HStack(spacing: 10) {
+                Label(text("artifacts.target"), systemImage: "tray.full")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                artifactTargetSelector
+                Spacer()
+            }
             HStack(spacing: 12) {
                 Button(text("artifacts.summary")) { vm.generateSummary() }
                     .disabled(vm.outputDir == nil || vm.isRecording || vm.isTranscribing)
                 Button(text("artifacts.shareSummary")) {
-                    if let url = vm.shareableURL(vm.summaryURL) { shareFile(url) }
+                    if let url = vm.shareableURL(vm.selectedArtifactSummaryURL) { shareFile(url) }
                 }
-                .disabled(vm.shareableURL(vm.summaryURL) == nil)
+                .disabled(vm.shareableURL(vm.selectedArtifactSummaryURL) == nil)
 
                 Divider()
                     .frame(height: 18)
@@ -4122,9 +4286,9 @@ struct ContentView: View {
                 Button(text("artifacts.kiExport")) { vm.generateKIAgentExport() }
                     .disabled(vm.outputDir == nil || vm.isRecording || vm.isTranscribing)
                 Button(text("artifacts.shareKI")) {
-                    if let url = vm.shareableURL(vm.kiAgentExportURL) { shareFile(url) }
+                    if let url = vm.shareableURL(vm.selectedArtifactKIAgentExportURL) { shareFile(url) }
                 }
-                .disabled(vm.shareableURL(vm.kiAgentExportURL) == nil)
+                .disabled(vm.shareableURL(vm.selectedArtifactKIAgentExportURL) == nil)
                 Button(text("artifacts.collectKI")) { vm.collectKIAgentExports() }
                     .disabled(vm.isRecording || vm.isTranscribing)
                 Button(text("artifacts.openExportFolder")) { vm.openKIAgentExportFolder() }
@@ -4143,6 +4307,37 @@ struct ContentView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var artifactTargetSelector: some View {
+        Menu {
+            ForEach(vm.artifactTargets) { target in
+                Button {
+                    vm.selectArtifactTarget(target)
+                } label: {
+                    if target.id == vm.selectedArtifactTarget?.id {
+                        Label(target.title, systemImage: "checkmark")
+                    } else {
+                        Text(target.title)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(vm.selectedArtifactTarget?.title ?? text("artifacts.targetOriginal"))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption.weight(.semibold))
+            .frame(maxWidth: 190, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .disabled(vm.artifactTargets.isEmpty)
+        .help(text("artifacts.target"))
     }
 
     private var statusBox: some View {
