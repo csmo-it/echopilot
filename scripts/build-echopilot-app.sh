@@ -33,6 +33,11 @@ mkdir -p "$MACOS" "$RESOURCES"
 cp "$BIN_PATH" "$MACOS/EchoPilot"
 chmod +x "$MACOS/EchoPilot"
 cp "$ROOT/Xcode/EchoPilot/EchoPilot.icns" "$RESOURCES/EchoPilot.icns"
+mkdir -p "$RESOURCES/scripts"
+cp "$ROOT/scripts/transcribe-local-whisper.sh" "$RESOURCES/scripts/transcribe-local-whisper.sh"
+cp "$ROOT/scripts/assemble-meeting-notes.sh" "$RESOURCES/scripts/assemble-meeting-notes.sh"
+cp "$ROOT/scripts/build-timeline.py" "$RESOURCES/scripts/build-timeline.py"
+chmod +x "$RESOURCES/scripts/transcribe-local-whisper.sh" "$RESOURCES/scripts/assemble-meeting-notes.sh"
 
 cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

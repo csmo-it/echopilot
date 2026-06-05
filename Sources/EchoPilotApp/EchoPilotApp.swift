@@ -1268,19 +1268,60 @@ final class PostProcessor {
 }
 
 final class LocalTranscriber {
+    private static func scriptsDirectory() throws -> URL {
+        let fileManager = FileManager.default
+        let sourceFile = URL(fileURLWithPath: #filePath)
+        let repoScripts = sourceFile
+            .deletingLastPathComponent() // EchoPilotApp
+            .deletingLastPathComponent() // Sources
+            .deletingLastPathComponent() // repo root
+            .appendingPathComponent("scripts", isDirectory: true)
+        var candidates = [repoScripts]
+
+        if let resourceScripts = Bundle.main.resourceURL?.appendingPathComponent("scripts", isDirectory: true) {
+            candidates.insert(resourceScripts, at: 0)
+        }
+
+        for scriptsDir in candidates {
+            let transcribeScript = scriptsDir.appendingPathComponent("transcribe-local-whisper.sh")
+            let assembleScript = scriptsDir.appendingPathComponent("assemble-meeting-notes.sh")
+            let timelineScript = scriptsDir.appendingPathComponent("build-timeline.py")
+            if fileManager.fileExists(atPath: transcribeScript.path),
+               fileManager.fileExists(atPath: assembleScript.path),
+               fileManager.fileExists(atPath: timelineScript.path) {
+                return scriptsDir
+            }
+        }
+
+        let expectedPaths = candidates.map { $0.path }.joined(separator: ", ")
+        throw RuntimeError("Transcription scripts not found. Expected bundled scripts at one of: \(expectedPaths)")
+    }
+
+    private static func transcriptionWorkDirectory() throws -> URL {
+        let fileManager = FileManager.default
+        let appSupport = try fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let workDir = appSupport
+            .appendingPathComponent("EchoPilot", isDirectory: true)
+            .appendingPathComponent("TranscriptionRuntime", isDirectory: true)
+        try fileManager.createDirectory(at: workDir, withIntermediateDirectories: true)
+        return workDir
+    }
+
     static func transcribe(
         sessionDir: URL,
         model: String,
         language: String,
         progress: @escaping @MainActor (Double, String) -> Void
     ) async throws -> URL {
-        let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // EchoPilotApp
-            .deletingLastPathComponent() // Sources
-            .deletingLastPathComponent() // repo root
-
-        let transcribeScript = repoRoot.appendingPathComponent("scripts/transcribe-local-whisper.sh")
-        let assembleScript = repoRoot.appendingPathComponent("scripts/assemble-meeting-notes.sh")
+        let scriptsDir = try scriptsDirectory()
+        let workDir = try transcriptionWorkDirectory()
+        let transcribeScript = scriptsDir.appendingPathComponent("transcribe-local-whisper.sh")
+        let assembleScript = scriptsDir.appendingPathComponent("assemble-meeting-notes.sh")
         guard FileManager.default.fileExists(atPath: transcribeScript.path) else {
             throw RuntimeError("Transcription script not found: \(transcribeScript.path)")
         }
@@ -1295,14 +1336,14 @@ final class LocalTranscriber {
         let command = """
         set -euo pipefail
         export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
-        cd \(shellQuote(repoRoot.path))
+        cd \(shellQuote(workDir.path))
         mkdir -p \(shellQuote(inputDir.path))
         export WHISPER_MODEL=\(shellQuote(model))
         export WHISPER_LANGUAGE=\(shellQuote(language))
         {
           date
-          scripts/transcribe-local-whisper.sh \(shellQuote(sessionDir.path))
-          scripts/assemble-meeting-notes.sh \(shellQuote(inputDir.path))
+          \(shellQuote(transcribeScript.path)) \(shellQuote(sessionDir.path))
+          \(shellQuote(assembleScript.path)) \(shellQuote(inputDir.path))
         } 2>&1 | tee \(shellQuote(logURL.path))
         """
 

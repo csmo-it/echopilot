@@ -7,8 +7,10 @@
 	objects = {
 		ECA55E710000000000000004 /* EchoPilot.icns in Resources */ = {isa = PBXBuildFile; fileRef = ECA55E710000000000000003 /* EchoPilot.icns */; };
 		ECA55E710000000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ECA55E710000000000000001 /* Assets.xcassets */; };
+		ECA55E710000000000000006 /* scripts in Resources */ = {isa = PBXBuildFile; fileRef = ECA55E710000000000000005 /* scripts */; };
 		CC84F43451D64AA299F08E0E /* EchoPilotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 486512294DE14561AFB9E1BA /* EchoPilotApp.swift */; };
 		486512294DE14561AFB9E1BA /* EchoPilotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EchoPilotApp.swift"; sourceTree = "<group>"; };
+		ECA55E710000000000000005 /* scripts */ = {isa = PBXFileReference; lastKnownFileType = folder; path = scripts; sourceTree = SOURCE_ROOT; };
 		ECA55E710000000000000003 /* EchoPilot.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = EchoPilot.icns; sourceTree = "<group>"; };
 		ECA55E710000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2F8FE905E6F0420592CC7167 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -51,6 +53,7 @@
 			isa = PBXGroup;
 			children = (
 				1D55D826B65E4634A93D8747 /* EchoPilotApp */,
+				ECA55E710000000000000005 /* scripts */,
 				503ADCBC7E2C497E9C4A43EA /* Xcode */,
 				87CC876399DB4841A44D589E /* Products */,
 			);
@@ -71,6 +74,7 @@
 			files = (
 				ECA55E710000000000000004 /* EchoPilot.icns in Resources */,
 				ECA55E710000000000000002 /* Assets.xcassets in Resources */,
+				ECA55E710000000000000006 /* scripts in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -224,13 +228,13 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Xcode/EchoPilot/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 0.1.20;
+				MARKETING_VERSION = 0.1.21;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.echopilot.app";
 				PRODUCT_NAME = "EchoPilot";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -246,13 +250,13 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Xcode/EchoPilot/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 0.1.20;
+				MARKETING_VERSION = 0.1.21;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.echopilot.app";
 				PRODUCT_NAME = "EchoPilot";
 				SWIFT_EMIT_LOC_STRINGS = YES;
