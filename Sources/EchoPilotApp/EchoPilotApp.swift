@@ -363,6 +363,12 @@ enum MeetingCallDetector {
         )
     }
 
+    static func activeMicrophoneNames() -> [String] {
+        audioInputDevices().compactMap { deviceID in
+            isAudioDeviceRunningSomewhere(deviceID) ? audioDeviceName(deviceID) : nil
+        }
+    }
+
     static func detectMeetingContext() async -> MeetingSuggestion? {
         if let teamsAXSuggestion = await detectTeamsCallFromAccessibility() {
             return teamsAXSuggestion
@@ -532,12 +538,6 @@ enum MeetingCallDetector {
 
     private static func axString(_ element: AXUIElement, _ attribute: String) -> String {
         axAttribute(element, attribute) as? String ?? ""
-    }
-
-    private static func activeMicrophoneNames() -> [String] {
-        audioInputDevices().compactMap { deviceID in
-            isAudioDeviceRunningSomewhere(deviceID) ? audioDeviceName(deviceID) : nil
-        }
     }
 
     private static func audioInputDevices() -> [AudioObjectID] {
@@ -1647,6 +1647,7 @@ enum AppSettings {
     private static let lastScheduledBatchRunKey = "lastScheduledBatchRun"
     private static let transcriptPreviewExpandedKey = "transcriptPreviewExpanded"
     static let autoRecordMeetingsEnabledKey = "autoRecordMeetingsEnabled"
+    static let autoRecordCountdownSecondsKey = "autoRecordCountdownSeconds"
     static let preferredUILanguageKey = "preferredUILanguage"
 
     static var preferredUILanguage: AppLanguagePreference {
@@ -1730,6 +1731,14 @@ enum AppSettings {
     static var autoRecordMeetingsEnabled: Bool {
         get { UserDefaults.standard.bool(forKey: autoRecordMeetingsEnabledKey) }
         set { UserDefaults.standard.set(newValue, forKey: autoRecordMeetingsEnabledKey) }
+    }
+
+    static var autoRecordCountdownSeconds: Int {
+        get {
+            let value = UserDefaults.standard.integer(forKey: autoRecordCountdownSecondsKey)
+            return value > 0 ? max(1, min(60, value)) : 5
+        }
+        set { UserDefaults.standard.set(max(1, min(60, newValue)), forKey: autoRecordCountdownSecondsKey) }
     }
 
     private static func dateForMinuteOfDay(_ minuteOfDay: Int) -> Date {
@@ -1833,7 +1842,9 @@ enum L10n {
         "autoRecord.title": [.german: "Automatische Aufnahme", .english: "Automatic recording"],
         "autoRecord.subtitle": [.german: "Wenn aktiv, startet EchoPilot erkannte Meetings nach kurzer Abbruchfrist automatisch.", .english: "When enabled, EchoPilot starts detected meetings automatically after a short cancellation window."],
         "autoRecord.toggle": [.german: "Erkannte Meetings automatisch aufzeichnen", .english: "Automatically record detected meetings"],
-        "autoRecord.help": [.german: "EchoPilot nutzt den erkannten Meeting-Titel, zeigt 5 Sekunden Vorlauf und startet nur mit vorhandenen Aufnahmeberechtigungen.", .english: "EchoPilot uses the detected meeting title, shows a 5-second lead time, and only starts when recording permissions are available."],
+        "autoRecord.help": [.german: "EchoPilot nutzt den erkannten Meeting-Titel, wartet den eingestellten Vorlauf ab und startet nur mit vorhandenen Aufnahmeberechtigungen.", .english: "EchoPilot uses the detected meeting title, waits for the configured lead time, and only starts when recording permissions are available."],
+        "autoRecord.countdownSetting": [.german: "Countdown: %d Sekunden", .english: "Countdown: %d seconds"],
+        "autoRecord.microphoneFallback": [.german: "Mikrofon: zuletzt genutzt, sonst aktives Call-Mikrofon.", .english: "Microphone: last used, otherwise active call microphone."],
         "autoRecord.countdown": [.german: "Meeting erkannt: %@. Aufnahme startet in %d Sekunden.", .english: "Meeting detected: %@. Recording starts in %d seconds."],
         "autoRecord.notification.title": [.german: "Meeting erkannt", .english: "Meeting detected"],
         "autoRecord.notification.body": [.german: "%@ — EchoPilot startet die Aufnahme in %d Sekunden.", .english: "%@ — EchoPilot starts recording in %d seconds."],
@@ -2708,6 +2719,9 @@ final class MeetingCaptureViewModel: ObservableObject {
             }
         }
     }
+    @Published var autoRecordCountdownSeconds = AppSettings.autoRecordCountdownSeconds {
+        didSet { AppSettings.autoRecordCountdownSeconds = autoRecordCountdownSeconds }
+    }
     @Published var autoRecordingPrompt: AutoRecordingPrompt?
     @Published var showPermissionsOverlay = false
     @Published var microphonePermissionGranted = false
@@ -2980,6 +2994,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         }
         cancelAutoRecordingCountdown(suppressCurrent: false)
         refreshPermissions(showOverlayIfNeeded: false)
+        refreshAudioInputs()
         guard permissionsReady else {
             showPermissionsOverlay = true
             status = L10n.text("status.permissionsRequired")
@@ -3094,9 +3109,22 @@ final class MeetingCaptureViewModel: ObservableObject {
         let persisted = AppSettings.selectedAudioInputID
         if let persisted, devices.contains(where: { $0.id == persisted }) {
             selectedAudioInputID = persisted
+        } else if let activeCallInputID = activeCallMicrophoneID(in: devices) {
+            selectedAudioInputID = activeCallInputID
         } else if selectedAudioInputID == nil || !devices.contains(where: { $0.id == selectedAudioInputID }) {
             selectedAudioInputID = devices.first?.id
         }
+    }
+
+    private func activeCallMicrophoneID(in devices: [AudioInputDevice]) -> String? {
+        let activeNames = MeetingCallDetector.activeMicrophoneNames()
+        guard !activeNames.isEmpty else { return nil }
+        let normalizedActiveNames = Set(activeNames.map(normalizedAudioDeviceName))
+        return devices.first { normalizedActiveNames.contains(normalizedAudioDeviceName($0.name)) }?.id
+    }
+
+    private func normalizedAudioDeviceName(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     func refreshWhisperModels() {
@@ -3386,7 +3414,7 @@ final class MeetingCaptureViewModel: ObservableObject {
             title: title,
             detail: detail,
             participants: suggestion?.participants ?? [],
-            remainingSeconds: 5
+            remainingSeconds: autoRecordCountdownSeconds
         )
         autoRecordingPrompt = prompt
         status = L10n.format("autoRecord.countdown", title, prompt.remainingSeconds)
@@ -3433,6 +3461,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         if !prompt.participants.isEmpty {
             participants = prompt.participants.joined(separator: ", ")
         }
+        refreshAudioInputs()
         status = L10n.format("autoRecord.status.starting", prompt.title)
         start()
     }
@@ -4855,6 +4884,7 @@ struct LegacyDashboardView: View {
 struct PreferencesView: View {
     @AppStorage(AppSettings.preferredUILanguageKey) private var preferredUILanguage = AppLanguagePreference.system.rawValue
     @AppStorage(AppSettings.autoRecordMeetingsEnabledKey) private var autoRecordMeetingsEnabled = false
+    @AppStorage(AppSettings.autoRecordCountdownSecondsKey) private var autoRecordCountdownSeconds = 5
 
     private var languagePreference: AppLanguagePreference {
         AppLanguagePreference(rawValue: preferredUILanguage) ?? .system
@@ -4913,7 +4943,21 @@ struct PreferencesView: View {
                             AppSettings.autoRecordMeetingsEnabled = newValue
                             NotificationCenter.default.post(name: EchoPilotNotifications.autoRecordSettingChanged, object: nil)
                         }
+                    Stepper(
+                        String(format: text("autoRecord.countdownSetting"), autoRecordCountdownSeconds),
+                        value: $autoRecordCountdownSeconds,
+                        in: 1...60,
+                        step: 1
+                    )
+                    .disabled(!autoRecordMeetingsEnabled)
+                    .onChange(of: autoRecordCountdownSeconds) { newValue in
+                        AppSettings.autoRecordCountdownSeconds = newValue
+                        NotificationCenter.default.post(name: EchoPilotNotifications.autoRecordSettingChanged, object: nil)
+                    }
                     Text(text("autoRecord.help"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(text("autoRecord.microphoneFallback"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -5019,7 +5063,7 @@ final class EchoPilotPreferencesWindowController: NSObject, NSWindowDelegate {
     func show() {
         if window == nil {
             let preferencesWindow = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 540, height: 540),
+                contentRect: NSRect(x: 0, y: 0, width: 540, height: 600),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered,
                 defer: false
@@ -5074,6 +5118,13 @@ final class EchoPilotPreferencesWindowController: NSObject, NSWindowDelegate {
     @objc private func toggleAutoRecording(_ sender: NSButton) {
         AppSettings.autoRecordMeetingsEnabled = sender.state == .on
         NotificationCenter.default.post(name: EchoPilotNotifications.autoRecordSettingChanged, object: nil)
+        rebuildContent()
+    }
+
+    @objc private func autoRecordingCountdownChanged(_ sender: NSStepper) {
+        AppSettings.autoRecordCountdownSeconds = sender.integerValue
+        NotificationCenter.default.post(name: EchoPilotNotifications.autoRecordSettingChanged, object: nil)
+        rebuildContent()
     }
 
     private func rebuildContent() {
@@ -5081,46 +5132,53 @@ final class EchoPilotPreferencesWindowController: NSObject, NSWindowDelegate {
         let language = AppSettings.currentLanguage
         window.title = L10n.text("prefs.title", language: language)
 
-        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 540, height: 540))
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 540, height: 600))
         contentView.autoresizingMask = [.width, .height]
 
-        let title = label(L10n.text("prefs.title", language: language), frame: NSRect(x: 24, y: 494, width: 492, height: 28), font: .boldSystemFont(ofSize: 20))
+        let title = label(L10n.text("prefs.title", language: language), frame: NSRect(x: 24, y: 554, width: 492, height: 28), font: .boldSystemFont(ofSize: 20))
         contentView.addSubview(title)
 
-        let languageTitle = label(L10n.text("prefs.language", language: language), frame: NSRect(x: 24, y: 456, width: 492, height: 22), font: .boldSystemFont(ofSize: 14))
+        let languageTitle = label(L10n.text("prefs.language", language: language), frame: NSRect(x: 24, y: 516, width: 492, height: 22), font: .boldSystemFont(ofSize: 14))
         contentView.addSubview(languageTitle)
 
         let selected = AppSettings.preferredUILanguage
-        let systemButton = radioButton(title: L10n.text("language.system", language: language), tag: 0, selected: selected == .system, frame: NSRect(x: 24, y: 428, width: 220, height: 22))
-        let germanButton = radioButton(title: L10n.text("language.german", language: language), tag: 1, selected: selected == .german, frame: NSRect(x: 24, y: 401, width: 220, height: 22))
-        let englishButton = radioButton(title: L10n.text("language.english", language: language), tag: 2, selected: selected == .english, frame: NSRect(x: 24, y: 374, width: 220, height: 22))
+        let systemButton = radioButton(title: L10n.text("language.system", language: language), tag: 0, selected: selected == .system, frame: NSRect(x: 24, y: 488, width: 220, height: 22))
+        let germanButton = radioButton(title: L10n.text("language.german", language: language), tag: 1, selected: selected == .german, frame: NSRect(x: 24, y: 461, width: 220, height: 22))
+        let englishButton = radioButton(title: L10n.text("language.english", language: language), tag: 2, selected: selected == .english, frame: NSRect(x: 24, y: 434, width: 220, height: 22))
         contentView.addSubview(systemButton)
         contentView.addSubview(germanButton)
         contentView.addSubview(englishButton)
 
-        let help = label(L10n.text("prefs.language.help", language: language), frame: NSRect(x: 280, y: 410, width: 236, height: 46), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
+        let help = label(L10n.text("prefs.language.help", language: language), frame: NSRect(x: 280, y: 470, width: 236, height: 46), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
         help.lineBreakMode = .byWordWrapping
         help.maximumNumberOfLines = 3
         contentView.addSubview(help)
 
         let activePreference: AppLanguagePreference = AppSettings.currentLanguage == .german ? .german : .english
-        let active = label(String(format: L10n.text("language.effective", language: language), L10n.text(activePreference == .german ? "language.german" : "language.english", language: language)), frame: NSRect(x: 280, y: 378, width: 236, height: 22), font: .boldSystemFont(ofSize: 11), color: .secondaryLabelColor)
+        let active = label(String(format: L10n.text("language.effective", language: language), L10n.text(activePreference == .german ? "language.german" : "language.english", language: language)), frame: NSRect(x: 280, y: 438, width: 236, height: 22), font: .boldSystemFont(ofSize: 11), color: .secondaryLabelColor)
         contentView.addSubview(active)
 
-        let divider = NSBox(frame: NSRect(x: 24, y: 356, width: 492, height: 1))
+        let divider = NSBox(frame: NSRect(x: 24, y: 416, width: 492, height: 1))
         divider.boxType = .separator
         contentView.addSubview(divider)
 
-        let automationTitle = label(L10n.text("prefs.automation", language: language), frame: NSRect(x: 24, y: 328, width: 492, height: 22), font: .boldSystemFont(ofSize: 14))
+        let automationTitle = label(L10n.text("prefs.automation", language: language), frame: NSRect(x: 24, y: 388, width: 492, height: 22), font: .boldSystemFont(ofSize: 14))
         contentView.addSubview(automationTitle)
-        let autoRecording = checkbox(title: L10n.text("autoRecord.toggle", language: language), selected: AppSettings.autoRecordMeetingsEnabled, frame: NSRect(x: 24, y: 300, width: 492, height: 22))
+        let autoRecording = checkbox(title: L10n.text("autoRecord.toggle", language: language), selected: AppSettings.autoRecordMeetingsEnabled, frame: NSRect(x: 24, y: 360, width: 492, height: 22))
         contentView.addSubview(autoRecording)
-        let autoRecordingHelp = label(L10n.text("autoRecord.help", language: language), frame: NSRect(x: 24, y: 268, width: 492, height: 28), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
+        let countdownLabel = label(String(format: L10n.text("autoRecord.countdownSetting", language: language), AppSettings.autoRecordCountdownSeconds), frame: NSRect(x: 24, y: 333, width: 220, height: 18), font: .systemFont(ofSize: 11))
+        contentView.addSubview(countdownLabel)
+        let countdownStepper = stepper(value: AppSettings.autoRecordCountdownSeconds, frame: NSRect(x: 244, y: 329, width: 80, height: 24))
+        countdownStepper.isEnabled = AppSettings.autoRecordMeetingsEnabled
+        contentView.addSubview(countdownStepper)
+        let autoRecordingHelp = label(L10n.text("autoRecord.help", language: language), frame: NSRect(x: 24, y: 300, width: 492, height: 28), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
         autoRecordingHelp.lineBreakMode = .byWordWrapping
         autoRecordingHelp.maximumNumberOfLines = 2
         contentView.addSubview(autoRecordingHelp)
+        let autoRecordingMic = label(L10n.text("autoRecord.microphoneFallback", language: language), frame: NSRect(x: 24, y: 276, width: 492, height: 18), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
+        contentView.addSubview(autoRecordingMic)
 
-        let automationDivider = NSBox(frame: NSRect(x: 24, y: 254, width: 492, height: 1))
+        let automationDivider = NSBox(frame: NSRect(x: 24, y: 262, width: 492, height: 1))
         automationDivider.boxType = .separator
         contentView.addSubview(automationDivider)
 
@@ -5216,6 +5274,17 @@ final class EchoPilotPreferencesWindowController: NSObject, NSWindowDelegate {
         button.frame = frame
         button.state = selected ? .on : .off
         return button
+    }
+
+    private func stepper(value: Int, frame: NSRect) -> NSStepper {
+        let stepper = NSStepper(frame: frame)
+        stepper.minValue = 1
+        stepper.maxValue = 60
+        stepper.increment = 1
+        stepper.integerValue = value
+        stepper.target = self
+        stepper.action = #selector(autoRecordingCountdownChanged(_:))
+        return stepper
     }
 
     private func pushButton(title: String, action: Selector, frame: NSRect) -> NSButton {

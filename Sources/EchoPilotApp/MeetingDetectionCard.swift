@@ -42,6 +42,24 @@ struct MeetingDetectionCard: View {
                 }
                 .toggleStyle(.switch)
 
+                if vm.autoRecordMeetingsEnabled {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 14) {
+                            countdownStepper
+                            Text(L10n.text("autoRecord.microphoneFallback"))
+                                .font(.caption)
+                                .foregroundStyle(EchoPilotTheme.secondaryText)
+                            Spacer()
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            countdownStepper
+                            Text(L10n.text("autoRecord.microphoneFallback"))
+                                .font(.caption)
+                                .foregroundStyle(EchoPilotTheme.secondaryText)
+                        }
+                    }
+                }
+
                 if let prompt = vm.autoRecordingPrompt {
                     autoRecordingCountdown(prompt)
                 }
@@ -96,6 +114,16 @@ struct MeetingDetectionCard: View {
             vm.meetingSuggestion = nil
             vm.status = L10n.text("detection.status.ignored")
         }
+    }
+
+    private var countdownStepper: some View {
+        Stepper(
+            L10n.format("autoRecord.countdownSetting", vm.autoRecordCountdownSeconds),
+            value: $vm.autoRecordCountdownSeconds,
+            in: 1...60,
+            step: 1
+        )
+        .font(.caption.weight(.semibold))
     }
 
     private func autoRecordingCountdown(_ prompt: AutoRecordingPrompt) -> some View {
