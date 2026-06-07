@@ -337,6 +337,10 @@ enum EchoPilotNotifications {
     static let languageChanged = Notification.Name("EchoPilotLanguageChanged")
 }
 
+enum EchoPilotRecordingState {
+    static var isRecording = false
+}
+
 enum MeetingCallDetector {
     static func deviceStatus() -> MeetingDeviceStatus {
         let activeMics = activeMicrophoneNames()
@@ -718,6 +722,14 @@ enum AppPermissions {
         isScreenCaptureGranted ? L10n.text("permissionStatus.granted") : L10n.text("permissionStatus.notGranted")
     }
 
+    static var isAccessibilityTrusted: Bool {
+        AXIsProcessTrusted()
+    }
+
+    static var accessibilityStatusText: String {
+        isAccessibilityTrusted ? L10n.text("permissionStatus.granted") : L10n.text("permissionStatus.notGranted")
+    }
+
     @MainActor
     static func requestScreenCapture() -> Bool {
         if CGPreflightScreenCaptureAccess() { return true }
@@ -730,6 +742,10 @@ enum AppPermissions {
 
     static func openScreenCaptureSettings() {
         openPrivacyPane("Privacy_ScreenCapture")
+    }
+
+    static func openAccessibilitySettings() {
+        openPrivacyPane("Privacy_Accessibility")
     }
 
     private static func openPrivacyPane(_ pane: String) {
@@ -2378,6 +2394,9 @@ final class MeetingCaptureViewModel: ObservableObject {
     @Published var isRecording = false {
         didSet {
             guard oldValue != isRecording else { return }
+            EchoPilotRecordingState.isRecording = isRecording
+            NSApp.dockTile.badgeLabel = isRecording ? "REC" : nil
+            NSApp.dockTile.display()
             NotificationCenter.default.post(
                 name: EchoPilotNotifications.recordingStateChanged,
                 object: nil,
@@ -2451,6 +2470,8 @@ final class MeetingCaptureViewModel: ObservableObject {
     @Published var microphonePermissionStatus = L10n.text("status.notChecked")
     @Published var screenCapturePermissionGranted = false
     @Published var screenCapturePermissionStatus = L10n.text("status.notChecked")
+    @Published var accessibilityPermissionGranted = false
+    @Published var accessibilityPermissionStatus = L10n.text("status.notChecked")
     @Published var homebrewInstalled = false
     @Published var homebrewStatus = L10n.text("status.notChecked")
     @Published var ffmpegInstalled = false
@@ -2465,6 +2486,18 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     var dependenciesReady: Bool {
         homebrewInstalled && ffmpegInstalled
+    }
+
+    var canStartRecording: Bool {
+        consentConfirmed && permissionsReady && !isStarting && !isRecording
+    }
+
+    var startRecordingDisabledReason: String? {
+        if isStarting { return "EchoPilot is preparing the recorder." }
+        if isRecording { return "Recording is already running." }
+        if !permissionsReady { return "Microphone and Screen/System Audio Recording permissions are required." }
+        if !consentConfirmed { return "Confirm participant consent before recording." }
+        return nil
     }
 
     private let service = MeetingCaptureService()
@@ -2605,6 +2638,8 @@ final class MeetingCaptureViewModel: ObservableObject {
         microphonePermissionStatus = AppPermissions.microphoneStatusText
         screenCapturePermissionGranted = AppPermissions.isScreenCaptureGranted
         screenCapturePermissionStatus = AppPermissions.screenCaptureStatusText
+        accessibilityPermissionGranted = AppPermissions.isAccessibilityTrusted
+        accessibilityPermissionStatus = AppPermissions.accessibilityStatusText
         if permissionsReady && dependenciesReady {
             showPermissionsOverlay = false
         } else if showOverlayIfNeeded {
@@ -2677,6 +2712,10 @@ final class MeetingCaptureViewModel: ObservableObject {
         AppPermissions.openScreenCaptureSettings()
     }
 
+    func openAccessibilitySettings() {
+        AppPermissions.openAccessibilitySettings()
+    }
+
     func installHomebrew() {
         AppDependencies.openHomebrewInstallTerminal()
         status = L10n.text("status.homebrewInstallOpened")
@@ -2693,6 +2732,10 @@ final class MeetingCaptureViewModel: ObservableObject {
         guard permissionsReady else {
             showPermissionsOverlay = true
             status = L10n.text("status.permissionsRequired")
+            return
+        }
+        guard consentConfirmed else {
+            status = "Consent confirmation is required before recording."
             return
         }
         isStarting = true
@@ -3585,7 +3628,7 @@ final class LevelMeterNSView: NSView {
     }
 }
 
-struct ContentView: View {
+struct LegacyDashboardView: View {
     @StateObject private var vm = MeetingCaptureViewModel()
     @AppStorage(AppSettings.preferredUILanguageKey) private var preferredUILanguage = AppLanguagePreference.system.rawValue
 
@@ -4885,6 +4928,17 @@ final class EchoPilotAppDelegate: NSObject, NSApplicationDelegate {
         // and reopening from the Dock. The status-bar item never hit that default
         // reopen path, which is why it only restored one window.
         return false
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard EchoPilotRecordingState.isRecording else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = "Recording is still running"
+        alert.informativeText = "Stop the EchoPilot recording before quitting so the local tracks and manifest are written correctly."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Keep Recording")
+        alert.runModal()
+        return .terminateCancel
     }
 }
 

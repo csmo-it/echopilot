@@ -9,7 +9,21 @@
 		ECA55E710000000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ECA55E710000000000000001 /* Assets.xcassets */; };
 		ECA55E710000000000000006 /* scripts in Resources */ = {isa = PBXBuildFile; fileRef = ECA55E710000000000000005 /* scripts */; };
 		CC84F43451D64AA299F08E0E /* EchoPilotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 486512294DE14561AFB9E1BA /* EchoPilotApp.swift */; };
+		ECA55E720000000000000101 /* EchoPilotTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA55E720000000000000201 /* EchoPilotTheme.swift */; };
+		ECA55E720000000000000102 /* MeetingCommandCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA55E720000000000000202 /* MeetingCommandCenterView.swift */; };
+		ECA55E720000000000000103 /* MeetingSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA55E720000000000000203 /* MeetingSidebarView.swift */; };
+		ECA55E720000000000000104 /* MeetingDetectionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA55E720000000000000204 /* MeetingDetectionCard.swift */; };
+		ECA55E720000000000000105 /* RecordingControlCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA55E720000000000000205 /* RecordingControlCard.swift */; };
+		ECA55E720000000000000106 /* TranscriptionInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA55E720000000000000206 /* TranscriptionInspectorView.swift */; };
+		ECA55E720000000000000107 /* MeetingReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA55E720000000000000207 /* MeetingReviewView.swift */; };
 		486512294DE14561AFB9E1BA /* EchoPilotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EchoPilotApp.swift"; sourceTree = "<group>"; };
+		ECA55E720000000000000201 /* EchoPilotTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EchoPilotTheme.swift"; sourceTree = "<group>"; };
+		ECA55E720000000000000202 /* MeetingCommandCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MeetingCommandCenterView.swift"; sourceTree = "<group>"; };
+		ECA55E720000000000000203 /* MeetingSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MeetingSidebarView.swift"; sourceTree = "<group>"; };
+		ECA55E720000000000000204 /* MeetingDetectionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MeetingDetectionCard.swift"; sourceTree = "<group>"; };
+		ECA55E720000000000000205 /* RecordingControlCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RecordingControlCard.swift"; sourceTree = "<group>"; };
+		ECA55E720000000000000206 /* TranscriptionInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TranscriptionInspectorView.swift"; sourceTree = "<group>"; };
+		ECA55E720000000000000207 /* MeetingReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MeetingReviewView.swift"; sourceTree = "<group>"; };
 		ECA55E710000000000000005 /* scripts */ = {isa = PBXFileReference; lastKnownFileType = folder; path = scripts; sourceTree = SOURCE_ROOT; };
 		ECA55E710000000000000003 /* EchoPilot.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = EchoPilot.icns; sourceTree = "<group>"; };
 		ECA55E710000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -19,6 +33,13 @@
 			isa = PBXGroup;
 			children = (
 				486512294DE14561AFB9E1BA /* EchoPilotApp.swift */,
+				ECA55E720000000000000201 /* EchoPilotTheme.swift */,
+				ECA55E720000000000000202 /* MeetingCommandCenterView.swift */,
+				ECA55E720000000000000203 /* MeetingSidebarView.swift */,
+				ECA55E720000000000000204 /* MeetingDetectionCard.swift */,
+				ECA55E720000000000000205 /* RecordingControlCard.swift */,
+				ECA55E720000000000000206 /* TranscriptionInspectorView.swift */,
+				ECA55E720000000000000207 /* MeetingReviewView.swift */,
 			);
 			path = Sources/EchoPilotApp;
 			sourceTree = "<group>";
@@ -64,6 +85,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				CC84F43451D64AA299F08E0E /* EchoPilotApp.swift in Sources */,
+				ECA55E720000000000000101 /* EchoPilotTheme.swift in Sources */,
+				ECA55E720000000000000102 /* MeetingCommandCenterView.swift in Sources */,
+				ECA55E720000000000000103 /* MeetingSidebarView.swift in Sources */,
+				ECA55E720000000000000104 /* MeetingDetectionCard.swift in Sources */,
+				ECA55E720000000000000105 /* RecordingControlCard.swift in Sources */,
+				ECA55E720000000000000106 /* TranscriptionInspectorView.swift in Sources */,
+				ECA55E720000000000000107 /* MeetingReviewView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -228,13 +256,13 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Xcode/EchoPilot/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 0.1.21;
+				MARKETING_VERSION = 0.1.22;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.echopilot.app";
 				PRODUCT_NAME = "EchoPilot";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -250,13 +278,13 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Xcode/EchoPilot/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 0.1.21;
+				MARKETING_VERSION = 0.1.22;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.echopilot.app";
 				PRODUCT_NAME = "EchoPilot";
 				SWIFT_EMIT_LOC_STRINGS = YES;
