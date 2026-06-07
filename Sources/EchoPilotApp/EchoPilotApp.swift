@@ -1677,8 +1677,13 @@ enum L10n {
         "prefs.language": [.german: "Sprache", .english: "Language"],
         "prefs.language.help": [.german: "Automatisch nutzt Deutsch bei deutscher Systemsprache, sonst Englisch.", .english: "Automatic uses German for German system language and English otherwise."],
         "prefs.maintenance": [.german: "Wartung", .english: "Maintenance"],
+        "prefs.permissions": [.german: "Berechtigungen", .english: "Permissions"],
+        "prefs.permissions.help": [.german: "Mikrofon und Screen/Systemaudio sind für Aufnahmen erforderlich. Accessibility verbessert nur die Meeting-Erkennung.", .english: "Microphone and Screen/System Audio are required for recording. Accessibility only improves meeting detection."],
         "prefs.checkUpdates": [.german: "Nach Updates suchen", .english: "Check for Updates"],
         "prefs.checkPermissions": [.german: "Setup prüfen", .english: "Check Setup"],
+        "prefs.openMicrophone": [.german: "Mikrofon öffnen", .english: "Open Microphone"],
+        "prefs.openSystemAudio": [.german: "Systemaudio öffnen", .english: "Open System Audio"],
+        "prefs.openAccessibility": [.german: "Bedienungshilfen öffnen", .english: "Open Accessibility"],
         "prefs.checkUpdates.help": [.german: "Prüft GitHub Releases und zeigt einen Hinweis im Hauptfenster.", .english: "Checks GitHub Releases and shows a notice in the main window."],
         "prefs.checkPermissions.help": [.german: "Öffnet EchoPilot und prüft Mikrofon, Screen/Systemaudio, Homebrew und FFmpeg.", .english: "Opens EchoPilot and checks microphone, screen/system audio, Homebrew, and FFmpeg."],
 
@@ -2261,7 +2266,7 @@ enum MeetingArtifactGenerator {
         - **Titel:** \(metadata.title.isEmpty ? "—" : metadata.title)
         - **Teilnehmer:** \(metadata.participants.isEmpty ? "—" : metadata.participants)
         - **Kunde/Projekt:** \(metadata.customerProject.isEmpty ? "—" : metadata.customerProject)
-        - **Consent bestätigt:** \(metadata.consentConfirmed ? "Ja" : "Nein / offen")
+        - **Aufzeichnungs-Hinweis:** EchoPilot-Aufnahmen sollen nur nach vorheriger Absprache mit den Teilnehmenden gestartet werden.
 
         ## Kurzüberblick
 
@@ -2330,7 +2335,7 @@ enum MeetingArtifactGenerator {
         - **Titel:** \(metadata.title.isEmpty ? "—" : metadata.title)
         - **Teilnehmer:** \(metadata.participants.isEmpty ? "—" : metadata.participants)
         - **Kunde/Projekt:** \(metadata.customerProject.isEmpty ? "—" : metadata.customerProject)
-        - **Consent bestätigt:** \(metadata.consentConfirmed ? "Ja" : "Nein / offen")
+        - **Aufzeichnungs-Hinweis:** EchoPilot-Aufnahmen sollen nur nach vorheriger Absprache mit den Teilnehmenden gestartet werden.
         - **Session:** \(sessionDir.lastPathComponent)
 
         ## Transcript / Source Material
@@ -2489,14 +2494,13 @@ final class MeetingCaptureViewModel: ObservableObject {
     }
 
     var canStartRecording: Bool {
-        consentConfirmed && permissionsReady && !isStarting && !isRecording
+        permissionsReady && !isStarting && !isRecording
     }
 
     var startRecordingDisabledReason: String? {
         if isStarting { return "EchoPilot is preparing the recorder." }
         if isRecording { return "Recording is already running." }
         if !permissionsReady { return "Microphone and Screen/System Audio Recording permissions are required." }
-        if !consentConfirmed { return "Confirm participant consent before recording." }
         return nil
     }
 
@@ -2732,10 +2736,6 @@ final class MeetingCaptureViewModel: ObservableObject {
         guard permissionsReady else {
             showPermissionsOverlay = true
             status = L10n.text("status.permissionsRequired")
-            return
-        }
-        guard consentConfirmed else {
-            status = "Consent confirmation is required before recording."
             return
         }
         isStarting = true
@@ -3994,8 +3994,9 @@ struct LegacyDashboardView: View {
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { vm.saveCurrentMetadata() }
                 .onChange(of: vm.customerProject) { _ in vm.saveCurrentMetadata(showStatus: false) }
-            Toggle(text("meeting.consent"), isOn: $vm.consentConfirmed)
-                .onChange(of: vm.consentConfirmed) { _ in vm.saveCurrentMetadata(showStatus: false) }
+            Label("Aufzeichnung nur nach vorheriger Absprache starten.", systemImage: "hand.raised")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             if vm.outputDir == nil {
                 Text(text("meeting.newHint"))
                     .font(.caption)
@@ -4557,9 +4558,59 @@ struct PreferencesView: View {
             } label: {
                 Label(text("prefs.maintenance"), systemImage: "wrench.and.screwdriver")
             }
+
+            GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(text("prefs.permissions.help"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    settingsPermissionRow(
+                        "Microphone",
+                        status: AppPermissions.microphoneStatusText,
+                        granted: AppPermissions.isMicrophoneGranted,
+                        button: text("prefs.openMicrophone"),
+                        action: AppPermissions.openMicrophoneSettings
+                    )
+                    settingsPermissionRow(
+                        "Screen/System audio",
+                        status: AppPermissions.screenCaptureStatusText,
+                        granted: AppPermissions.isScreenCaptureGranted,
+                        button: text("prefs.openSystemAudio"),
+                        action: AppPermissions.openScreenCaptureSettings
+                    )
+                    settingsPermissionRow(
+                        "Accessibility",
+                        status: AppPermissions.accessibilityStatusText,
+                        granted: AppPermissions.isAccessibilityTrusted,
+                        button: text("prefs.openAccessibility"),
+                        action: AppPermissions.openAccessibilitySettings
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } label: {
+                Label(text("prefs.permissions"), systemImage: "lock.shield")
+            }
         }
         .padding(24)
-        .frame(width: 460)
+        .frame(width: 520)
+    }
+
+    private func settingsPermissionRow(_ title: String, status: String, granted: Bool, button: String, action: @escaping () -> Void) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Label(granted ? "OK" : "Missing", systemImage: granted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(granted ? .green : .orange)
+                .frame(width: 86, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                Text(status)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button(button, action: action)
+        }
     }
 }
 
@@ -4581,7 +4632,7 @@ final class EchoPilotPreferencesWindowController: NSObject, NSWindowDelegate {
     func show() {
         if window == nil {
             let preferencesWindow = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 500, height: 320),
+                contentRect: NSRect(x: 0, y: 0, width: 540, height: 470),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered,
                 defer: false
@@ -4621,59 +4672,121 @@ final class EchoPilotPreferencesWindowController: NSObject, NSWindowDelegate {
         NotificationCenter.default.post(name: EchoPilotNotifications.checkPermissionsRequested, object: nil)
     }
 
+    @objc private func openMicrophoneSettings() {
+        AppPermissions.openMicrophoneSettings()
+    }
+
+    @objc private func openScreenCaptureSettings() {
+        AppPermissions.openScreenCaptureSettings()
+    }
+
+    @objc private func openAccessibilitySettings() {
+        AppPermissions.openAccessibilitySettings()
+    }
+
     private func rebuildContent() {
         guard let window else { return }
         let language = AppSettings.currentLanguage
         window.title = L10n.text("prefs.title", language: language)
 
-        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 320))
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 540, height: 470))
         contentView.autoresizingMask = [.width, .height]
 
-        let title = label(L10n.text("prefs.title", language: language), frame: NSRect(x: 24, y: 274, width: 452, height: 28), font: .boldSystemFont(ofSize: 20))
+        let title = label(L10n.text("prefs.title", language: language), frame: NSRect(x: 24, y: 424, width: 492, height: 28), font: .boldSystemFont(ofSize: 20))
         contentView.addSubview(title)
 
-        let languageTitle = label(L10n.text("prefs.language", language: language), frame: NSRect(x: 24, y: 236, width: 452, height: 22), font: .boldSystemFont(ofSize: 14))
+        let languageTitle = label(L10n.text("prefs.language", language: language), frame: NSRect(x: 24, y: 386, width: 492, height: 22), font: .boldSystemFont(ofSize: 14))
         contentView.addSubview(languageTitle)
 
         let selected = AppSettings.preferredUILanguage
-        let systemButton = radioButton(title: L10n.text("language.system", language: language), tag: 0, selected: selected == .system, frame: NSRect(x: 24, y: 208, width: 220, height: 22))
-        let germanButton = radioButton(title: L10n.text("language.german", language: language), tag: 1, selected: selected == .german, frame: NSRect(x: 24, y: 181, width: 220, height: 22))
-        let englishButton = radioButton(title: L10n.text("language.english", language: language), tag: 2, selected: selected == .english, frame: NSRect(x: 24, y: 154, width: 220, height: 22))
+        let systemButton = radioButton(title: L10n.text("language.system", language: language), tag: 0, selected: selected == .system, frame: NSRect(x: 24, y: 358, width: 220, height: 22))
+        let germanButton = radioButton(title: L10n.text("language.german", language: language), tag: 1, selected: selected == .german, frame: NSRect(x: 24, y: 331, width: 220, height: 22))
+        let englishButton = radioButton(title: L10n.text("language.english", language: language), tag: 2, selected: selected == .english, frame: NSRect(x: 24, y: 304, width: 220, height: 22))
         contentView.addSubview(systemButton)
         contentView.addSubview(germanButton)
         contentView.addSubview(englishButton)
 
-        let help = label(L10n.text("prefs.language.help", language: language), frame: NSRect(x: 260, y: 190, width: 216, height: 46), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
+        let help = label(L10n.text("prefs.language.help", language: language), frame: NSRect(x: 280, y: 340, width: 236, height: 46), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
         help.lineBreakMode = .byWordWrapping
         help.maximumNumberOfLines = 3
         contentView.addSubview(help)
 
         let activePreference: AppLanguagePreference = AppSettings.currentLanguage == .german ? .german : .english
-        let active = label(String(format: L10n.text("language.effective", language: language), L10n.text(activePreference == .german ? "language.german" : "language.english", language: language)), frame: NSRect(x: 260, y: 158, width: 216, height: 22), font: .boldSystemFont(ofSize: 11), color: .secondaryLabelColor)
+        let active = label(String(format: L10n.text("language.effective", language: language), L10n.text(activePreference == .german ? "language.german" : "language.english", language: language)), frame: NSRect(x: 280, y: 308, width: 236, height: 22), font: .boldSystemFont(ofSize: 11), color: .secondaryLabelColor)
         contentView.addSubview(active)
 
-        let divider = NSBox(frame: NSRect(x: 24, y: 136, width: 452, height: 1))
+        let divider = NSBox(frame: NSRect(x: 24, y: 286, width: 492, height: 1))
         divider.boxType = .separator
         contentView.addSubview(divider)
 
-        let maintenanceTitle = label(L10n.text("prefs.maintenance", language: language), frame: NSRect(x: 24, y: 103, width: 452, height: 22), font: .boldSystemFont(ofSize: 14))
+        let maintenanceTitle = label(L10n.text("prefs.maintenance", language: language), frame: NSRect(x: 24, y: 253, width: 492, height: 22), font: .boldSystemFont(ofSize: 14))
         contentView.addSubview(maintenanceTitle)
 
-        let updateButton = pushButton(title: L10n.text("prefs.checkUpdates", language: language), action: #selector(checkUpdates), frame: NSRect(x: 24, y: 65, width: 180, height: 30))
+        let updateButton = pushButton(title: L10n.text("prefs.checkUpdates", language: language), action: #selector(checkUpdates), frame: NSRect(x: 24, y: 215, width: 180, height: 30))
         contentView.addSubview(updateButton)
-        let updateHelp = label(L10n.text("prefs.checkUpdates.help", language: language), frame: NSRect(x: 220, y: 62, width: 256, height: 36), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
+        let updateHelp = label(L10n.text("prefs.checkUpdates.help", language: language), frame: NSRect(x: 220, y: 212, width: 296, height: 36), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
         updateHelp.lineBreakMode = .byWordWrapping
         updateHelp.maximumNumberOfLines = 2
         contentView.addSubview(updateHelp)
 
-        let permissionsButton = pushButton(title: L10n.text("prefs.checkPermissions", language: language), action: #selector(checkPermissions), frame: NSRect(x: 24, y: 25, width: 180, height: 30))
+        let permissionsButton = pushButton(title: L10n.text("prefs.checkPermissions", language: language), action: #selector(checkPermissions), frame: NSRect(x: 24, y: 175, width: 180, height: 30))
         contentView.addSubview(permissionsButton)
-        let permissionsHelp = label(L10n.text("prefs.checkPermissions.help", language: language), frame: NSRect(x: 220, y: 22, width: 256, height: 36), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
+        let permissionsHelp = label(L10n.text("prefs.checkPermissions.help", language: language), frame: NSRect(x: 220, y: 172, width: 296, height: 36), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
         permissionsHelp.lineBreakMode = .byWordWrapping
         permissionsHelp.maximumNumberOfLines = 2
         contentView.addSubview(permissionsHelp)
 
+        let permissionDivider = NSBox(frame: NSRect(x: 24, y: 154, width: 492, height: 1))
+        permissionDivider.boxType = .separator
+        contentView.addSubview(permissionDivider)
+
+        let permissionTitle = label(L10n.text("prefs.permissions", language: language), frame: NSRect(x: 24, y: 121, width: 492, height: 22), font: .boldSystemFont(ofSize: 14))
+        contentView.addSubview(permissionTitle)
+        let permissionHelp = label(L10n.text("prefs.permissions.help", language: language), frame: NSRect(x: 24, y: 92, width: 492, height: 24), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
+        permissionHelp.lineBreakMode = .byWordWrapping
+        permissionHelp.maximumNumberOfLines = 2
+        contentView.addSubview(permissionHelp)
+        addPermissionRow(
+            to: contentView,
+            y: 62,
+            title: "Microphone",
+            status: AppPermissions.microphoneStatusText,
+            granted: AppPermissions.isMicrophoneGranted,
+            buttonTitle: L10n.text("prefs.openMicrophone", language: language),
+            action: #selector(openMicrophoneSettings)
+        )
+        addPermissionRow(
+            to: contentView,
+            y: 35,
+            title: "Screen/System audio",
+            status: AppPermissions.screenCaptureStatusText,
+            granted: AppPermissions.isScreenCaptureGranted,
+            buttonTitle: L10n.text("prefs.openSystemAudio", language: language),
+            action: #selector(openScreenCaptureSettings)
+        )
+        addPermissionRow(
+            to: contentView,
+            y: 8,
+            title: "Accessibility",
+            status: AppPermissions.accessibilityStatusText,
+            granted: AppPermissions.isAccessibilityTrusted,
+            buttonTitle: L10n.text("prefs.openAccessibility", language: language),
+            action: #selector(openAccessibilitySettings)
+        )
+
         window.contentView = contentView
+    }
+
+    private func addPermissionRow(to contentView: NSView, y: CGFloat, title: String, status: String, granted: Bool, buttonTitle: String, action: Selector) {
+        let state = label(granted ? "OK" : "Missing", frame: NSRect(x: 24, y: y + 2, width: 72, height: 18), font: .boldSystemFont(ofSize: 11), color: granted ? .systemGreen : .systemOrange)
+        contentView.addSubview(state)
+        let titleLabel = label(title, frame: NSRect(x: 102, y: y + 9, width: 170, height: 16), font: .boldSystemFont(ofSize: 11))
+        contentView.addSubview(titleLabel)
+        let statusLabel = label(status, frame: NSRect(x: 102, y: y - 5, width: 250, height: 16), font: .systemFont(ofSize: 10), color: .secondaryLabelColor)
+        statusLabel.lineBreakMode = .byTruncatingTail
+        contentView.addSubview(statusLabel)
+        let button = pushButton(title: buttonTitle, action: action, frame: NSRect(x: 372, y: y - 1, width: 144, height: 24))
+        contentView.addSubview(button)
     }
 
     private func label(_ text: String, frame: NSRect, font: NSFont, color: NSColor = .labelColor) -> NSTextField {

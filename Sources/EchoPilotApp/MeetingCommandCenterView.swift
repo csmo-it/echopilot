@@ -48,7 +48,7 @@ extension MeetingCaptureViewModel {
 
     var nextRecommendedAction: String {
         switch workflowStage {
-        case .prepare: return canStartRecording ? "Start Recording" : "Complete consent and permissions"
+        case .prepare: return canStartRecording ? "Start Recording" : "Complete permissions"
         case .record: return "Stop Recording"
         case .transcribe: return "Transcribe locally"
         case .review: return "Review meeting notes"
@@ -149,6 +149,9 @@ struct ContentView: View {
                 if let updateInfo = vm.updateInfo {
                     updateBanner(updateInfo)
                 }
+                if !vm.permissionsReady {
+                    permissionWarning
+                }
                 MeetingDetectionCard(vm: vm)
                 RecordingControlCard(vm: vm)
                 if vm.workflowStage != .prepare && vm.workflowStage != .record {
@@ -170,25 +173,29 @@ struct ContentView: View {
     }
 
     private var commandHeader: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 18) {
-                CommandCenterSectionHeader(
-                    step: workflowTrail,
-                    title: "Meeting Command Center",
-                    subtitle: vm.workflowStage.subtitle
-                )
-                Spacer()
-                stageSummary(trailing: true)
+        VStack(alignment: .leading, spacing: 10) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 18) {
+                    CommandCenterSectionHeader(
+                        step: workflowTrail,
+                        title: "Meeting Command Center",
+                        subtitle: vm.workflowStage.subtitle
+                    )
+                    Spacer()
+                    stageSummary(trailing: true)
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    CommandCenterSectionHeader(
+                        step: workflowTrail,
+                        title: "Meeting Command Center",
+                        subtitle: vm.workflowStage.subtitle
+                    )
+                    stageSummary(trailing: false)
+                }
             }
 
-            VStack(alignment: .leading, spacing: 12) {
-                CommandCenterSectionHeader(
-                    step: workflowTrail,
-                    title: "Meeting Command Center",
-                    subtitle: vm.workflowStage.subtitle
-                )
-                stageSummary(trailing: false)
-            }
+            consentNotice
         }
     }
 
@@ -205,6 +212,18 @@ struct ContentView: View {
                     .font(.system(size: 28, weight: .bold, design: .monospaced))
                     .foregroundStyle(EchoPilotTheme.recording)
             }
+        }
+    }
+
+    private var consentNotice: some View {
+        Label {
+            Text("Recording should only be started after prior agreement with everyone in the meeting.")
+                .font(.caption)
+                .foregroundStyle(EchoPilotTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "hand.raised")
+                .foregroundStyle(EchoPilotTheme.warning)
         }
     }
 
@@ -286,7 +305,7 @@ struct ContentView: View {
     private var nextActionDetail: String {
         switch vm.workflowStage {
         case .prepare:
-            return "Fill meeting context, choose the mic, confirm consent."
+            return "Fill meeting context and choose the microphone."
         case .record:
             return "The current recording is local. Stop it to prepare transcription input."
         case .transcribe:
@@ -341,6 +360,38 @@ struct ContentView: View {
                     vm.dismissUpdateInfo()
                 }
             }
+        }
+    }
+
+    private var permissionWarning: some View {
+        EchoCard("Permissions need attention", subtitle: "EchoPilot needs microphone and Screen/System Audio access before recording.", systemImage: "exclamationmark.triangle") {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    permissionWarningText
+                    Spacer()
+                    permissionWarningActions
+                }
+                VStack(alignment: .leading, spacing: 10) {
+                    permissionWarningText
+                    permissionWarningActions
+                }
+            }
+        }
+    }
+
+    private var permissionWarningText: some View {
+        Text("Review setup or open Settings to grant the missing macOS permissions.")
+            .font(.callout)
+            .foregroundStyle(EchoPilotTheme.warning)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder private var permissionWarningActions: some View {
+        SecondaryCommandButton("Review setup", systemImage: "lock.shield") {
+            vm.showPermissionsOverlay = true
+        }
+        SecondaryCommandButton("Settings", systemImage: "gearshape") {
+            EchoPilotPreferencesWindowController.shared.show()
         }
     }
 

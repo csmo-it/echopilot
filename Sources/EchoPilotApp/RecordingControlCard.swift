@@ -29,7 +29,6 @@ struct RecordingControlCard: View {
         ) {
             VStack(alignment: .leading, spacing: 16) {
                 metadataFields
-                consentRow
                 AudioHealthMeters(vm: vm)
                 actionRow
             }
@@ -89,28 +88,6 @@ struct RecordingControlCard: View {
             .pickerStyle(.menu)
             .disabled(vm.isRecording)
         }
-    }
-
-    private var consentRow: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Toggle(isOn: $vm.consentConfirmed) {
-                Text("Consent confirmed")
-                    .font(.headline)
-                    .foregroundStyle(EchoPilotTheme.text)
-            }
-            .toggleStyle(.checkbox)
-            .onChange(of: vm.consentConfirmed) { _ in vm.saveCurrentMetadata(showStatus: false) }
-
-            Text("Start Recording stays locked until participants have been told that EchoPilot will create a transcript and meeting notes.")
-                .font(.caption)
-                .foregroundStyle(vm.consentConfirmed ? EchoPilotTheme.secondaryText : EchoPilotTheme.warning)
-        }
-        .padding(12)
-        .background((vm.consentConfirmed ? EchoPilotTheme.success : EchoPilotTheme.warning).opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke((vm.consentConfirmed ? EchoPilotTheme.success : EchoPilotTheme.warning).opacity(0.28), lineWidth: 1)
-        )
     }
 
     private var actionRow: some View {

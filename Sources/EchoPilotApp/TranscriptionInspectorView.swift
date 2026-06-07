@@ -105,23 +105,6 @@ struct TranscriptionInspectorView: View {
                 }
             }
 
-            EchoCard("Permissions", subtitle: "Desktop recording requires explicit macOS trust.", systemImage: "lock.shield") {
-                VStack(alignment: .leading, spacing: 9) {
-                    permissionRow("Microphone", granted: vm.microphonePermissionGranted, status: vm.microphonePermissionStatus) {
-                        vm.openMicrophoneSettings()
-                    }
-                    permissionRow("Screen/System audio", granted: vm.screenCapturePermissionGranted, status: vm.screenCapturePermissionStatus) {
-                        vm.openScreenCaptureSettings()
-                    }
-                    permissionRow("Accessibility", granted: vm.accessibilityPermissionGranted, status: vm.accessibilityPermissionStatus) {
-                        vm.openAccessibilitySettings()
-                    }
-                    Text("Accessibility improves Teams participant/title detection. Recording still works without it.")
-                        .font(.caption2)
-                        .foregroundStyle(EchoPilotTheme.mutedText)
-                }
-            }
-
             Spacer(minLength: 0)
         }
         .padding(16)
@@ -137,21 +120,5 @@ struct TranscriptionInspectorView: View {
         if vm.isProcessing || vm.isTranscribing { return "EchoPilot is busy." }
         if !vm.ffmpegInstalled { return "FFmpeg is required for transcription." }
         return nil
-    }
-
-    private func permissionRow(_ title: String, granted: Bool, status: String, action: @escaping () -> Void) -> some View {
-        HStack(spacing: 8) {
-            StatusChip(granted ? "OK" : "Missing", tone: granted ? .success : .warning)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                Text(status)
-                    .font(.caption2)
-                    .foregroundStyle(EchoPilotTheme.secondaryText)
-            }
-            Spacer()
-            Button("Open", action: action)
-                .buttonStyle(.borderless)
-        }
     }
 }
