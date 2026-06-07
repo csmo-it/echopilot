@@ -9,21 +9,21 @@ enum MeetingWorkflowStage {
 
     var label: String {
         switch self {
-        case .prepare: return "Prepare"
-        case .record: return "Record"
-        case .transcribe: return "Transcribe"
-        case .review: return "Review"
-        case .export: return "Export"
+        case .prepare: return L10n.text("workflow.prepare")
+        case .record: return L10n.text("workflow.record")
+        case .transcribe: return L10n.text("workflow.transcribe")
+        case .review: return L10n.text("workflow.review")
+        case .export: return L10n.text("workflow.export")
         }
     }
 
     var subtitle: String {
         switch self {
-        case .prepare: return "Confirm context and consent before capturing audio."
-        case .record: return "Capture system audio and microphone as separate local tracks."
-        case .transcribe: return "The recording is ready. Run local Whisper next."
-        case .review: return "Review transcripts, timeline, summaries, and handoff files."
-        case .export: return "Package the meeting for follow-up or AI-agent processing."
+        case .prepare: return L10n.text("workflow.prepare.subtitle")
+        case .record: return L10n.text("workflow.record.subtitle")
+        case .transcribe: return L10n.text("workflow.transcribe.subtitle")
+        case .review: return L10n.text("workflow.review.subtitle")
+        case .export: return L10n.text("workflow.export.subtitle")
         }
     }
 }
@@ -48,11 +48,11 @@ extension MeetingCaptureViewModel {
 
     var nextRecommendedAction: String {
         switch workflowStage {
-        case .prepare: return canStartRecording ? "Start Recording" : "Complete permissions"
-        case .record: return "Stop Recording"
-        case .transcribe: return "Transcribe locally"
-        case .review: return "Review meeting notes"
-        case .export: return "Share or collect handoff files"
+        case .prepare: return canStartRecording ? L10n.text("button.startRecording") : L10n.text("command.next.completePermissions")
+        case .record: return L10n.text("button.stopRecording")
+        case .transcribe: return L10n.text("command.next.transcribe")
+        case .review: return L10n.text("command.next.review")
+        case .export: return L10n.text("command.next.export")
         }
     }
 }
@@ -91,7 +91,7 @@ struct ContentView: View {
                 Button {
                     vm.prepareNewRecording()
                 } label: {
-                    Label("New Recording", systemImage: "plus")
+                    Label(L10n.text("button.newRecording"), systemImage: "plus")
                 }
                 .keyboardShortcut("n", modifiers: [.command])
 
@@ -99,20 +99,20 @@ struct ContentView: View {
                     vm.refreshPermissions(showOverlayIfNeeded: true)
                     vm.refreshDependencies(showOverlayIfNeeded: true)
                 } label: {
-                    Label("Check Permissions", systemImage: "lock.shield")
+                    Label(L10n.text("actions.checkPermissions"), systemImage: "lock.shield")
                 }
 
                 Button {
                     vm.checkForUpdates(showStatus: true)
                 } label: {
-                    Label("Check Updates", systemImage: "arrow.down.circle")
+                    Label(L10n.text("actions.checkUpdates"), systemImage: "arrow.down.circle")
                 }
                 .disabled(vm.isCheckingForUpdates)
 
                 Button {
                     inspectorVisible.toggle()
                 } label: {
-                    Label(inspectorVisible ? "Hide Inspector" : "Show Inspector", systemImage: "sidebar.right")
+                    Label(inspectorVisible ? L10n.text("command.hideInspector") : L10n.text("command.showInspector"), systemImage: "sidebar.right")
                 }
                 .keyboardShortcut("i", modifiers: [.command, .option])
             }
@@ -178,7 +178,7 @@ struct ContentView: View {
                 HStack(alignment: .top, spacing: 18) {
                     CommandCenterSectionHeader(
                         step: workflowTrail,
-                        title: "Meeting Command Center",
+                        title: L10n.text("command.title"),
                         subtitle: vm.workflowStage.subtitle
                     )
                     Spacer()
@@ -188,7 +188,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     CommandCenterSectionHeader(
                         step: workflowTrail,
-                        title: "Meeting Command Center",
+                        title: L10n.text("command.title"),
                         subtitle: vm.workflowStage.subtitle
                     )
                     stageSummary(trailing: false)
@@ -217,7 +217,7 @@ struct ContentView: View {
 
     private var consentNotice: some View {
         Label {
-            Text("Recording should only be started after prior agreement with everyone in the meeting.")
+            Text(L10n.text("command.recordingAgreementNotice"))
                 .font(.caption)
                 .foregroundStyle(EchoPilotTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -247,7 +247,7 @@ struct ContentView: View {
     }
 
     private var workflowTrail: String {
-        "Prepare -> Record -> Transcribe -> Review -> Export"
+        "\(L10n.text("workflow.prepare")) -> \(L10n.text("workflow.record")) -> \(L10n.text("workflow.transcribe")) -> \(L10n.text("workflow.review")) -> \(L10n.text("workflow.export"))"
     }
 
     private var stageTone: StatusChip.Tone {
@@ -305,15 +305,15 @@ struct ContentView: View {
     private var nextActionDetail: String {
         switch vm.workflowStage {
         case .prepare:
-            return "Fill meeting context and choose the microphone."
+            return L10n.text("command.nextDetail.prepare")
         case .record:
-            return "The current recording is local. Stop it to prepare transcription input."
+            return L10n.text("command.nextDetail.record")
         case .transcribe:
-            return "Run local Whisper before reviewing transcripts and generating handoff files."
+            return L10n.text("command.nextDetail.transcribe")
         case .review:
-            return "Check summary, timeline, transcripts, and source files before exporting."
+            return L10n.text("command.nextDetail.review")
         case .export:
-            return "Open, share, or collect AI handoff packages from the Files tab."
+            return L10n.text("command.nextDetail.export")
         }
     }
 
@@ -324,39 +324,39 @@ struct ContentView: View {
         case .record:
             EmptyView()
         case .transcribe:
-            PrimaryButton("Transcribe locally", systemImage: "waveform.and.magnifyingglass", disabledReason: transcribeDisabledReason) {
+            PrimaryButton(L10n.text("command.next.transcribe"), systemImage: "waveform.and.magnifyingglass", disabledReason: transcribeDisabledReason) {
                 vm.transcribeCurrentRecording()
             }
             .frame(width: 210)
         case .review:
-            SecondaryCommandButton("Generate AI handoff", systemImage: "shippingbox", disabledReason: vm.outputDir == nil ? "Select a meeting first." : nil) {
+            SecondaryCommandButton(L10n.text("review.generateHandoff"), systemImage: "shippingbox", disabledReason: vm.outputDir == nil ? L10n.text("disabled.selectMeeting") : nil) {
                 vm.generateKIAgentExport()
             }
         case .export:
-            SecondaryCommandButton("Open export folder", systemImage: "folder", action: vm.openKIAgentExportFolder)
+            SecondaryCommandButton(L10n.text("review.openExportFolder"), systemImage: "folder", action: vm.openKIAgentExportFolder)
         }
     }
 
     private var transcribeDisabledReason: String? {
-        if vm.outputDir == nil { return "Select or record a meeting first." }
-        if vm.isRecording { return "Stop recording before transcription." }
-        if vm.isProcessing { return "Preparing transcription input." }
-        if vm.isTranscribing { return "Transcription already running." }
-        if !vm.ffmpegInstalled { return "Install FFmpeg first." }
+        if vm.outputDir == nil { return L10n.text("disabled.selectOrRecordMeeting") }
+        if vm.isRecording { return L10n.text("disabled.stopBeforeTranscription") }
+        if vm.isProcessing { return L10n.text("disabled.preparingTranscriptionInput") }
+        if vm.isTranscribing { return L10n.text("disabled.transcriptionRunning") }
+        if !vm.ffmpegInstalled { return L10n.text("disabled.installFFmpeg") }
         return nil
     }
 
     private func updateBanner(_ updateInfo: UpdateInfo) -> some View {
-        EchoCard("Update available", subtitle: "Installed \(GitHubUpdateChecker.currentVersion), latest \(updateInfo.version)", systemImage: "arrow.down.circle") {
+        EchoCard(L10n.text("update.cardTitle"), subtitle: L10n.format("update.subtitle", GitHubUpdateChecker.currentVersion, updateInfo.version), systemImage: "arrow.down.circle") {
             HStack {
                 Text(updateInfo.name)
                     .font(.callout)
                     .foregroundStyle(EchoPilotTheme.secondaryText)
                 Spacer()
-                SecondaryCommandButton("Open release", systemImage: "arrow.up.right.square") {
+                SecondaryCommandButton(L10n.text("update.openRelease"), systemImage: "arrow.up.right.square") {
                     vm.openLatestRelease()
                 }
-                SecondaryCommandButton("Dismiss", systemImage: "xmark") {
+                SecondaryCommandButton(L10n.text("update.dismiss"), systemImage: "xmark") {
                     vm.dismissUpdateInfo()
                 }
             }
@@ -364,7 +364,7 @@ struct ContentView: View {
     }
 
     private var permissionWarning: some View {
-        EchoCard("Permissions need attention", subtitle: "EchoPilot needs microphone and Screen/System Audio access before recording.", systemImage: "exclamationmark.triangle") {
+        EchoCard(L10n.text("permissions.warning.title"), subtitle: L10n.text("permissions.warning.subtitle"), systemImage: "exclamationmark.triangle") {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
                     permissionWarningText
@@ -380,23 +380,23 @@ struct ContentView: View {
     }
 
     private var permissionWarningText: some View {
-        Text("Review setup or open Settings to grant the missing macOS permissions.")
+        Text(L10n.text("permissions.warning.text"))
             .font(.callout)
             .foregroundStyle(EchoPilotTheme.warning)
             .fixedSize(horizontal: false, vertical: true)
     }
 
     @ViewBuilder private var permissionWarningActions: some View {
-        SecondaryCommandButton("Review setup", systemImage: "lock.shield") {
+        SecondaryCommandButton(L10n.text("permissions.reviewSetup"), systemImage: "lock.shield") {
             vm.showPermissionsOverlay = true
         }
-        SecondaryCommandButton("Settings", systemImage: "gearshape") {
+        SecondaryCommandButton(L10n.text("permissions.settings"), systemImage: "gearshape") {
             EchoPilotPreferencesWindowController.shared.show()
         }
     }
 
     private var statusFooter: some View {
-        EchoCard("Status", systemImage: "info.circle") {
+        EchoCard(L10n.text("status.title"), systemImage: "info.circle") {
             VStack(alignment: .leading, spacing: 6) {
                 Text(vm.status)
                     .font(.callout)
@@ -421,35 +421,35 @@ struct CommandCenterPermissionsOverlay: View {
     var body: some View {
         ZStack {
             Color.black.opacity(0.48).ignoresSafeArea()
-            EchoCard("EchoPilot setup", subtitle: "Recording needs macOS permissions and local tools before the workflow is reliable.", systemImage: "lock.shield") {
+            EchoCard(L10n.text("setup.title"), subtitle: L10n.text("setup.subtitle"), systemImage: "lock.shield") {
                 VStack(alignment: .leading, spacing: 14) {
-                    setupRow("Microphone", status: vm.microphonePermissionStatus, ready: vm.microphonePermissionGranted, primary: "Request") {
+                    setupRow(L10n.text("audio.microphone"), status: vm.microphonePermissionStatus, ready: vm.microphonePermissionGranted, primary: L10n.text("setup.request")) {
                         vm.requestMicrophonePermission()
                     } settings: {
                         vm.openMicrophoneSettings()
                     }
-                    setupRow("Screen/System audio", status: vm.screenCapturePermissionStatus, ready: vm.screenCapturePermissionGranted, primary: "Request") {
+                    setupRow(L10n.text("audio.systemAudio"), status: vm.screenCapturePermissionStatus, ready: vm.screenCapturePermissionGranted, primary: L10n.text("setup.request")) {
                         vm.requestScreenCapturePermission()
                     } settings: {
                         vm.openScreenCaptureSettings()
                     }
-                    setupRow("Homebrew", status: vm.homebrewStatus, ready: vm.homebrewInstalled, primary: "Install") {
+                    setupRow("Homebrew", status: vm.homebrewStatus, ready: vm.homebrewInstalled, primary: L10n.text("setup.install")) {
                         vm.installHomebrew()
                     } settings: {}
-                    setupRow("FFmpeg", status: vm.ffmpegStatus, ready: vm.ffmpegInstalled, primary: "Install") {
+                    setupRow("FFmpeg", status: vm.ffmpegStatus, ready: vm.ffmpegInstalled, primary: L10n.text("setup.install")) {
                         vm.installFFmpeg()
                     } settings: {}
 
                     HStack {
-                        SecondaryCommandButton("Check again", systemImage: "arrow.clockwise") {
+                        SecondaryCommandButton(L10n.text("setup.checkAgain"), systemImage: "arrow.clockwise") {
                             vm.refreshPermissions(showOverlayIfNeeded: true)
                             vm.refreshDependencies(showOverlayIfNeeded: true)
                         }
                         Spacer()
-                        SecondaryCommandButton("Later", systemImage: "clock") {
+                        SecondaryCommandButton(L10n.text("setup.later"), systemImage: "clock") {
                             vm.showPermissionsOverlay = false
                         }
-                        PrimaryButton("Done", systemImage: "checkmark", disabledReason: vm.permissionsReady && vm.dependenciesReady ? nil : "Finish required permissions and tools first.") {
+                        PrimaryButton(L10n.text("setup.done"), systemImage: "checkmark", disabledReason: vm.permissionsReady && vm.dependenciesReady ? nil : L10n.text("setup.done.disabled")) {
                             vm.showPermissionsOverlay = false
                         }
                         .frame(width: 120)
@@ -470,7 +470,7 @@ struct CommandCenterPermissionsOverlay: View {
         settings: @escaping () -> Void
     ) -> some View {
         HStack(spacing: 12) {
-            StatusChip(ready ? "Ready" : "Missing", tone: ready ? .success : .warning)
+            StatusChip(ready ? L10n.text("status.readyShort") : L10n.text("status.missing"), tone: ready ? .success : .warning)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.headline)
@@ -484,8 +484,8 @@ struct CommandCenterPermissionsOverlay: View {
             Button(primary, action: action)
                 .disabled(ready)
             if !ready {
-                Button("Settings", action: settings)
-                    .disabled(primary == "Install")
+                Button(L10n.text("permissions.settings"), action: settings)
+                    .disabled(primary == L10n.text("setup.install"))
             }
         }
         .padding(12)

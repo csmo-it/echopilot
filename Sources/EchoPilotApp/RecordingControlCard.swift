@@ -4,9 +4,9 @@ struct RecordingControlCard: View {
     @ObservedObject var vm: MeetingCaptureViewModel
 
     private var primaryTitle: String {
-        if vm.isRecording { return "Stop Recording" }
-        if vm.isStarting { return "Starting..." }
-        return "Start Recording"
+        if vm.isRecording { return L10n.text("button.stopRecording") }
+        if vm.isStarting { return L10n.text("button.starting") }
+        return L10n.text("button.startRecording")
     }
 
     private var primaryIcon: String {
@@ -23,8 +23,8 @@ struct RecordingControlCard: View {
 
     var body: some View {
         EchoCard(
-            "Recording",
-            subtitle: "Prepare the meeting once, then use the one obvious recording action.",
+            L10n.text("recording.title"),
+            subtitle: L10n.text("recording.subtitle"),
             systemImage: "record.circle"
         ) {
             VStack(alignment: .leading, spacing: 16) {
@@ -39,19 +39,19 @@ struct RecordingControlCard: View {
         ViewThatFits(in: .horizontal) {
             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
                 GridRow {
-                    commandTextField("Meeting title", text: $vm.meetingTitle, prompt: "Weekly customer sync")
-                    commandTextField("Participants", text: $vm.participants, prompt: "Names or roles")
+                    commandTextField(L10n.text("meeting.field.title"), text: $vm.meetingTitle, prompt: L10n.text("meeting.placeholder.title"))
+                    commandTextField(L10n.text("meeting.field.participants"), text: $vm.participants, prompt: L10n.text("meeting.placeholder.participants"))
                 }
                 GridRow {
-                    commandTextField("Customer / project", text: $vm.customerProject, prompt: "Quartz, Synmedico, internal...")
+                    commandTextField(L10n.text("meeting.field.customerProject"), text: $vm.customerProject, prompt: L10n.text("meeting.placeholder.customerProject"))
                     microphonePicker
                 }
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                commandTextField("Meeting title", text: $vm.meetingTitle, prompt: "Weekly customer sync")
-                commandTextField("Participants", text: $vm.participants, prompt: "Names or roles")
-                commandTextField("Customer / project", text: $vm.customerProject, prompt: "Quartz, Synmedico, internal...")
+                commandTextField(L10n.text("meeting.field.title"), text: $vm.meetingTitle, prompt: L10n.text("meeting.placeholder.title"))
+                commandTextField(L10n.text("meeting.field.participants"), text: $vm.participants, prompt: L10n.text("meeting.placeholder.participants"))
+                commandTextField(L10n.text("meeting.field.customerProject"), text: $vm.customerProject, prompt: L10n.text("meeting.placeholder.customerProject"))
                 microphonePicker
             }
         }
@@ -73,10 +73,10 @@ struct RecordingControlCard: View {
 
     private var microphonePicker: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("Microphone")
+            Text(L10n.text("audio.microphone"))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(EchoPilotTheme.secondaryText)
-            Picker("Microphone", selection: Binding(
+            Picker(L10n.text("audio.microphone"), selection: Binding(
                 get: { vm.selectedAudioInputID ?? "" },
                 set: { vm.selectedAudioInputID = $0.isEmpty ? nil : $0 }
             )) {
@@ -115,7 +115,7 @@ struct RecordingControlCard: View {
 
     private var actionHint: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(vm.isRecording ? "Recording \(echoPilotFormatDuration(vm.elapsed))" : nextActionHint)
+            Text(vm.isRecording ? L10n.format("recording.elapsed", echoPilotFormatDuration(vm.elapsed)) : nextActionHint)
                 .font(.headline.monospacedDigit())
                 .foregroundStyle(vm.isRecording ? EchoPilotTheme.recording : EchoPilotTheme.text)
             if let disabledReason, !vm.isRecording {
@@ -135,9 +135,9 @@ struct RecordingControlCard: View {
 
     private var nextActionHint: String {
         if vm.outputDir != nil && !vm.isRecording {
-            return "Next: Transcribe locally"
+            return L10n.text("recording.next.transcribe")
         }
-        return "Next: Prepare and record"
+        return L10n.text("recording.next.prepare")
     }
 }
 
@@ -159,7 +159,7 @@ struct AudioHealthMeters: View {
 
     private var systemTile: some View {
         healthTile(
-            title: "System audio",
+            title: L10n.text("audio.systemAudio"),
             granted: vm.screenCapturePermissionGranted,
             status: vm.screenCapturePermissionStatus,
             level: { vm.liveLevel(for: .system) }
@@ -168,7 +168,7 @@ struct AudioHealthMeters: View {
 
     private var microphoneTile: some View {
         healthTile(
-            title: "Microphone",
+            title: L10n.text("audio.microphone"),
             granted: vm.microphonePermissionGranted,
             status: vm.microphonePermissionStatus,
             level: { vm.liveLevel(for: .microphone) }
@@ -182,7 +182,7 @@ struct AudioHealthMeters: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(EchoPilotTheme.secondaryText)
                 Spacer()
-                StatusChip(granted ? "Ready" : "Missing", tone: granted ? .success : .warning)
+                StatusChip(granted ? L10n.text("status.readyShort") : L10n.text("status.missing"), tone: granted ? .success : .warning)
             }
             LevelMeterView(title: "", isActive: vm.isRecording, levelProvider: level)
                 .frame(height: 18)

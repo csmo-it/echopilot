@@ -14,13 +14,13 @@ enum MeetingReviewTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .summary: return "Summary"
-        case .timeline: return "Timeline"
-        case .combined: return "Combined transcript"
-        case .system: return "System transcript"
-        case .microphone: return "Microphone transcript"
-        case .handoff: return "AI handoff"
-        case .files: return "Files"
+        case .summary: return L10n.text("review.tab.summary")
+        case .timeline: return L10n.text("review.tab.timeline")
+        case .combined: return L10n.text("review.tab.combined")
+        case .system: return L10n.text("review.tab.system")
+        case .microphone: return L10n.text("review.tab.microphone")
+        case .handoff: return L10n.text("review.tab.handoff")
+        case .files: return L10n.text("review.tab.files")
         }
     }
 
@@ -41,7 +41,7 @@ struct MeetingReviewView: View {
     @State private var selectedTab: MeetingReviewTab = .summary
 
     var body: some View {
-        EchoCard("Review", subtitle: "Everything after transcription lands here.", systemImage: "doc.text.magnifyingglass") {
+        EchoCard(L10n.text("workflow.review"), subtitle: L10n.text("review.subtitle"), systemImage: "doc.text.magnifyingglass") {
             VStack(alignment: .leading, spacing: 12) {
                 reviewTabPicker
                 content
@@ -62,14 +62,14 @@ struct MeetingReviewView: View {
 
     private var reviewTabPicker: some View {
         ViewThatFits(in: .horizontal) {
-            Picker("Review tab", selection: $selectedTab) {
+            Picker(L10n.text("review.tabPicker"), selection: $selectedTab) {
                 ForEach(MeetingReviewTab.allCases) { tab in
                     Text(tab.title).tag(tab)
                 }
             }
             .pickerStyle(.segmented)
 
-            Picker("Review tab", selection: $selectedTab) {
+            Picker(L10n.text("review.tabPicker"), selection: $selectedTab) {
                 ForEach(MeetingReviewTab.allCases) { tab in
                     Text(tab.title).tag(tab)
                 }
@@ -108,22 +108,22 @@ struct MeetingReviewView: View {
             if let url = vm.selectedArtifactSummaryURL, vm.fileExists(url) {
                 previewFile(url)
             } else {
-                emptyState("No summary generated yet.", systemImage: "doc")
+                emptyState(L10n.text("review.summary.empty"), systemImage: "doc")
             }
         }
     }
 
     @ViewBuilder private var summaryActions: some View {
-        PrimaryButton("Generate summary", systemImage: "doc.text", disabledReason: vm.outputDir == nil ? "Select a meeting first." : nil) {
+        PrimaryButton(L10n.text("review.generateSummary"), systemImage: "doc.text", disabledReason: vm.outputDir == nil ? L10n.text("disabled.selectMeeting") : nil) {
             vm.generateSummary()
         }
         .frame(width: 190)
-        SecondaryCommandButton("Share", systemImage: "square.and.arrow.up", disabledReason: vm.shareableURL(vm.selectedArtifactSummaryURL) == nil ? "Generate a summary first." : nil) {
+        SecondaryCommandButton(L10n.text("review.share"), systemImage: "square.and.arrow.up", disabledReason: vm.shareableURL(vm.selectedArtifactSummaryURL) == nil ? L10n.text("disabled.generateSummaryFirst") : nil) {
             if let url = vm.shareableURL(vm.selectedArtifactSummaryURL) {
                 share(url)
             }
         }
-        SecondaryCommandButton("Generate AI handoff", systemImage: "shippingbox", disabledReason: vm.outputDir == nil ? "Select a meeting first." : nil) {
+        SecondaryCommandButton(L10n.text("review.generateHandoff"), systemImage: "shippingbox", disabledReason: vm.outputDir == nil ? L10n.text("disabled.selectMeeting") : nil) {
             vm.generateKIAgentExport()
         }
     }
@@ -165,10 +165,10 @@ struct MeetingReviewView: View {
 
     @ViewBuilder private func transcriptActions(for kind: TranscriptPreviewKind) -> some View {
         if let url = vm.transcriptURL(for: kind) {
-            SecondaryCommandButton("Open file", systemImage: "arrow.up.right.square", disabledReason: vm.fileExists(url) ? nil : "File does not exist yet.") {
+            SecondaryCommandButton(L10n.text("review.openFile"), systemImage: "arrow.up.right.square", disabledReason: vm.fileExists(url) ? nil : L10n.text("disabled.fileMissing")) {
                 NSWorkspace.shared.open(url)
             }
-            SecondaryCommandButton("Share", systemImage: "square.and.arrow.up", disabledReason: vm.fileExists(url) ? nil : "File does not exist yet.") {
+            SecondaryCommandButton(L10n.text("review.share"), systemImage: "square.and.arrow.up", disabledReason: vm.fileExists(url) ? nil : L10n.text("disabled.fileMissing")) {
                 share(url)
             }
         }
@@ -190,27 +190,27 @@ struct MeetingReviewView: View {
                     .foregroundStyle(EchoPilotTheme.secondaryText)
                     .textSelection(.enabled)
             }
-            Text("Files are local. EchoPilot does not upload recordings or transcripts by itself.")
+            Text(L10n.text("review.files.localNotice"))
                 .font(.caption)
                 .foregroundStyle(EchoPilotTheme.secondaryText)
         }
     }
 
     @ViewBuilder private var fileActions: some View {
-        SecondaryCommandButton("Open meeting folder", systemImage: "folder", disabledReason: vm.outputDir == nil ? "Select a meeting first." : nil) {
+        SecondaryCommandButton(L10n.text("review.openMeetingFolder"), systemImage: "folder", disabledReason: vm.outputDir == nil ? L10n.text("disabled.selectMeeting") : nil) {
             vm.openOutputFolder()
         }
-        SecondaryCommandButton("Open transcription input", systemImage: "folder.badge.gearshape", disabledReason: vm.transcriptionInputDir == nil ? "No transcription input folder yet." : nil) {
+        SecondaryCommandButton(L10n.text("review.openTranscriptionInput"), systemImage: "folder.badge.gearshape", disabledReason: vm.transcriptionInputDir == nil ? L10n.text("disabled.noTranscriptionInput") : nil) {
             vm.openTranscriptionInputFolder()
         }
-        SecondaryCommandButton("Collect AI exports", systemImage: "tray.and.arrow.down") {
+        SecondaryCommandButton(L10n.text("review.collectExports"), systemImage: "tray.and.arrow.down") {
             vm.collectKIAgentExports()
         }
     }
 
     private func previewText(for kind: TranscriptPreviewKind) -> String {
         if vm.transcriptPreviewKind != kind {
-            return "Loading \(kind.title)..."
+            return L10n.format("review.loading", kind.title)
         }
         return vm.transcriptPreviewText
     }
@@ -221,7 +221,7 @@ struct MeetingReviewView: View {
     }
 
     private func previewFile(_ url: URL) -> some View {
-        let text = (try? String(contentsOf: url, encoding: .utf8)) ?? "Could not read \(url.lastPathComponent)."
+        let text = (try? String(contentsOf: url, encoding: .utf8)) ?? L10n.format("review.readFailed", url.lastPathComponent)
         return ScrollView {
             Text(text)
                 .font(.system(.caption, design: .monospaced))

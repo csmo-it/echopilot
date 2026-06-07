@@ -1673,6 +1673,140 @@ enum L10n {
         "language.english": [.german: "Englisch", .english: "English"],
         "language.effective": [.german: "Aktiv: %@", .english: "Active: %@"],
 
+        "workflow.prepare": [.german: "Vorbereiten", .english: "Prepare"],
+        "workflow.record": [.german: "Aufzeichnen", .english: "Record"],
+        "workflow.transcribe": [.german: "Transkribieren", .english: "Transcribe"],
+        "workflow.review": [.german: "Review", .english: "Review"],
+        "workflow.export": [.german: "Export", .english: "Export"],
+        "workflow.prepare.subtitle": [.german: "Kontext prüfen und die Aufnahme vorbereiten.", .english: "Confirm context and prepare the recording."],
+        "workflow.record.subtitle": [.german: "Systemaudio und Mikrofon werden lokal als getrennte Spuren aufgezeichnet.", .english: "Capture system audio and microphone as separate local tracks."],
+        "workflow.transcribe.subtitle": [.german: "Die Aufnahme ist bereit. Als Nächstes lokal mit Whisper transkribieren.", .english: "The recording is ready. Run local Whisper next."],
+        "workflow.review.subtitle": [.german: "Transkripte, Timeline, Zusammenfassung und Handoff-Dateien prüfen.", .english: "Review transcripts, timeline, summaries, and handoff files."],
+        "workflow.export.subtitle": [.german: "Meeting für Follow-up oder KI-Agenten verpacken.", .english: "Package the meeting for follow-up or AI-agent processing."],
+
+        "command.title": [.german: "Meeting-Kommandozentrale", .english: "Meeting Command Center"],
+        "command.hideInspector": [.german: "Inspector ausblenden", .english: "Hide Inspector"],
+        "command.showInspector": [.german: "Inspector anzeigen", .english: "Show Inspector"],
+        "command.recordingAgreementNotice": [.german: "Aufzeichnung nur nach vorheriger Absprache mit allen Teilnehmenden starten.", .english: "Recording should only be started after prior agreement with everyone in the meeting."],
+        "command.next.completePermissions": [.german: "Berechtigungen vervollständigen", .english: "Complete permissions"],
+        "command.next.transcribe": [.german: "Lokal transkribieren", .english: "Transcribe locally"],
+        "command.next.review": [.german: "Meeting-Notizen prüfen", .english: "Review meeting notes"],
+        "command.next.export": [.german: "Handoff-Dateien teilen oder sammeln", .english: "Share or collect handoff files"],
+        "command.nextDetail.prepare": [.german: "Meeting-Kontext ausfüllen und Mikrofon wählen.", .english: "Fill meeting context and choose the microphone."],
+        "command.nextDetail.record": [.german: "Die aktuelle Aufnahme bleibt lokal. Stoppen, um die Transkription vorzubereiten.", .english: "The current recording is local. Stop it to prepare transcription input."],
+        "command.nextDetail.transcribe": [.german: "Lokales Whisper ausführen, bevor Transkripte und Handoff-Dateien geprüft werden.", .english: "Run local Whisper before reviewing transcripts and generating handoff files."],
+        "command.nextDetail.review": [.german: "Zusammenfassung, Timeline, Transkripte und Quelldateien vor dem Export prüfen.", .english: "Check summary, timeline, transcripts, and source files before exporting."],
+        "command.nextDetail.export": [.german: "KI-Handoff-Pakete im Dateien-Tab öffnen, teilen oder sammeln.", .english: "Open, share, or collect AI handoff packages from the Files tab."],
+
+        "update.cardTitle": [.german: "Update verfügbar", .english: "Update available"],
+        "update.subtitle": [.german: "Installiert %@, aktuell %@", .english: "Installed %@, latest %@"],
+        "update.openRelease": [.german: "Release öffnen", .english: "Open release"],
+        "update.dismiss": [.german: "Ausblenden", .english: "Dismiss"],
+
+        "permissions.warning.title": [.german: "Berechtigungen brauchen Aufmerksamkeit", .english: "Permissions need attention"],
+        "permissions.warning.subtitle": [.german: "EchoPilot benötigt Mikrofon und Screen/Systemaudio vor der Aufnahme.", .english: "EchoPilot needs microphone and Screen/System Audio access before recording."],
+        "permissions.warning.text": [.german: "Setup prüfen oder Einstellungen öffnen, um fehlende macOS-Berechtigungen zu erteilen.", .english: "Review setup or open Settings to grant the missing macOS permissions."],
+        "permissions.reviewSetup": [.german: "Setup prüfen", .english: "Review setup"],
+        "setup.title": [.german: "EchoPilot Setup", .english: "EchoPilot setup"],
+        "setup.subtitle": [.german: "Für zuverlässige Aufnahmen braucht EchoPilot macOS-Berechtigungen und lokale Tools.", .english: "Recording needs macOS permissions and local tools before the workflow is reliable."],
+        "setup.request": [.german: "Anfragen", .english: "Request"],
+        "setup.install": [.german: "Installieren", .english: "Install"],
+        "setup.checkAgain": [.german: "Erneut prüfen", .english: "Check again"],
+        "setup.later": [.german: "Später", .english: "Later"],
+        "setup.done": [.german: "Fertig", .english: "Done"],
+        "setup.done.disabled": [.german: "Erforderliche Berechtigungen und Tools zuerst abschließen.", .english: "Finish required permissions and tools first."],
+        "status.ok": [.german: "OK", .english: "OK"],
+        "status.readyShort": [.german: "Bereit", .english: "Ready"],
+        "status.missing": [.german: "Fehlt", .english: "Missing"],
+        "audio.microphone": [.german: "Mikrofon", .english: "Microphone"],
+        "audio.systemAudio": [.german: "Systemaudio", .english: "System audio"],
+
+        "sidebar.filter": [.german: "Filter", .english: "Filter"],
+        "sidebar.search": [.german: "Meetings suchen", .english: "Search meetings"],
+        "sidebar.shownCount": [.german: "%d angezeigt", .english: "%d shown"],
+        "sidebar.filter.all": [.german: "Alle", .english: "All"],
+        "sidebar.filter.needsTranscription": [.german: "Braucht Transkription", .english: "Needs transcription"],
+        "sidebar.filter.transcribed": [.german: "Transkribiert", .english: "Transcribed"],
+        "sidebar.filter.archived": [.german: "Archiviert", .english: "Archived"],
+        "sidebar.status.ready": [.german: "Bereit", .english: "Ready"],
+        "sidebar.status.open": [.german: "Offen", .english: "Open"],
+        "sidebar.openCount": [.german: "%d offen", .english: "%d open"],
+        "sidebar.archive": [.german: "Archivieren", .english: "Archive"],
+        "sidebar.unarchive": [.german: "Aus Archiv holen", .english: "Unarchive"],
+        "sidebar.delete": [.german: "Löschen", .english: "Delete"],
+
+        "detection.title": [.german: "Smarte Meeting-Erkennung", .english: "Smart meeting detection"],
+        "detection.subtitle": [.german: "Lokaler Teams/Zoom/Webex/Meet/Slack/Browser-Kontext bleibt optional und berechtigungsbewusst.", .english: "Local Teams/Zoom/Webex/Meet/Slack/browser context stays optional and permission-aware."],
+        "detection.activityDetected": [.german: "Meeting-Aktivität erkannt", .english: "Meeting activity detected"],
+        "detection.noneDetected": [.german: "Kein aktives Meeting erkannt", .english: "No active meeting detected"],
+        "detection.participantsMissing": [.german: "Teilnehmende noch nicht erkannt", .english: "Participants not detected yet"],
+        "detection.suggested": [.german: "Vorschlag", .english: "Suggested"],
+        "detection.idle": [.german: "Bereit", .english: "Idle"],
+        "detection.use": [.german: "Übernehmen", .english: "Use"],
+        "detection.edit": [.german: "Bearbeiten", .english: "Edit"],
+        "detection.ignore": [.german: "Ignorieren", .english: "Ignore"],
+        "detection.status.loaded": [.german: "Vorschlag geladen. Meeting-Felder vor der Aufnahme bearbeiten.", .english: "Suggestion loaded. Edit the meeting fields before recording."],
+        "detection.status.ignored": [.german: "Meeting-Vorschlag ignoriert.", .english: "Meeting suggestion ignored."],
+
+        "recording.title": [.german: "Aufzeichnung", .english: "Recording"],
+        "recording.subtitle": [.german: "Meeting einmal vorbereiten, dann die eine klare Aufnahme-Aktion nutzen.", .english: "Prepare the meeting once, then use the one obvious recording action."],
+        "recording.elapsed": [.german: "Aufnahme %@", .english: "Recording %@"],
+        "recording.next.transcribe": [.german: "Nächster Schritt: lokal transkribieren", .english: "Next: Transcribe locally"],
+        "recording.next.prepare": [.german: "Nächster Schritt: vorbereiten und aufnehmen", .english: "Next: Prepare and record"],
+        "meeting.placeholder.title": [.german: "Wöchentliches Kundengespräch", .english: "Weekly customer sync"],
+        "meeting.placeholder.participants": [.german: "Namen oder Rollen", .english: "Names or roles"],
+        "meeting.placeholder.customerProject": [.german: "Quartz, Synmedico, intern ...", .english: "Quartz, Synmedico, internal..."],
+
+        "inspector.title": [.german: "Inspector", .english: "Inspector"],
+        "inspector.transcription.subtitle": [.german: "Erweiterte Kontrollen bleiben hier, bis sie relevant sind.", .english: "Advanced controls stay here until they are relevant."],
+        "inspector.whisperModel": [.german: "Whisper-Modell", .english: "Whisper model"],
+        "inspector.models.none": [.german: "Noch keine Whisper-Modelle erkannt", .english: "No Whisper models detected yet"],
+        "inspector.models.installed": [.german: "Installiert: %@", .english: "Installed: %@"],
+        "inspector.cancelTranscription": [.german: "Transkription abbrechen", .english: "Cancel transcription"],
+        "batch.automation": [.german: "Batch-Automation", .english: "Batch automation"],
+        "batch.automation.subtitle": [.german: "Nutzen, wenn EchoPilot Aufnahmen außerhalb von Meetings abarbeiten soll.", .english: "Use when EchoPilot should clear recordings outside meeting time."],
+        "batch.run": [.german: "Batch starten", .english: "Run batch"],
+        "batch.idleTranscription": [.german: "Idle-Transkription", .english: "Idle transcription"],
+        "batch.afterIdle": [.german: "Nach %d Min. Leerlauf", .english: "After %d min idle"],
+        "batch.dailySchedule": [.german: "Täglicher Zeitplan", .english: "Daily schedule"],
+        "batch.runAt": [.german: "Start um", .english: "Run at"],
+
+        "review.subtitle": [.german: "Alles nach der Transkription landet hier.", .english: "Everything after transcription lands here."],
+        "review.tabPicker": [.german: "Review-Tab", .english: "Review tab"],
+        "review.tab.summary": [.german: "Zusammenfassung", .english: "Summary"],
+        "review.tab.timeline": [.german: "Timeline", .english: "Timeline"],
+        "review.tab.combined": [.german: "Kombiniertes Transkript", .english: "Combined transcript"],
+        "review.tab.system": [.german: "System-Transkript", .english: "System transcript"],
+        "review.tab.microphone": [.german: "Mikrofon-Transkript", .english: "Microphone transcript"],
+        "review.tab.handoff": [.german: "KI-Handoff", .english: "AI handoff"],
+        "review.tab.files": [.german: "Dateien", .english: "Files"],
+        "review.summary.empty": [.german: "Noch keine Zusammenfassung erzeugt.", .english: "No summary generated yet."],
+        "review.generateSummary": [.german: "Zusammenfassung erzeugen", .english: "Generate summary"],
+        "review.generateHandoff": [.german: "KI-Handoff erzeugen", .english: "Generate AI handoff"],
+        "review.share": [.german: "Teilen", .english: "Share"],
+        "review.openFile": [.german: "Datei öffnen", .english: "Open file"],
+        "review.openExportFolder": [.german: "Export-Ordner öffnen", .english: "Open export folder"],
+        "review.openMeetingFolder": [.german: "Meeting-Ordner öffnen", .english: "Open meeting folder"],
+        "review.openTranscriptionInput": [.german: "Transkriptions-Input öffnen", .english: "Open transcription input"],
+        "review.collectExports": [.german: "KI-Exporte sammeln", .english: "Collect AI exports"],
+        "review.files.localNotice": [.german: "Dateien bleiben lokal. EchoPilot lädt Aufnahmen oder Transkripte nicht selbst hoch.", .english: "Files are local. EchoPilot does not upload recordings or transcripts by itself."],
+        "review.loading": [.german: "%@ wird geladen ...", .english: "Loading %@..."],
+        "review.readFailed": [.german: "%@ konnte nicht gelesen werden.", .english: "Could not read %@."],
+        "disabled.selectMeeting": [.german: "Zuerst ein Meeting auswählen.", .english: "Select a meeting first."],
+        "disabled.selectOrRecordMeeting": [.german: "Zuerst ein Meeting auswählen oder aufnehmen.", .english: "Select or record a meeting first."],
+        "disabled.stopBeforeTranscription": [.german: "Aufnahme vor der Transkription stoppen.", .english: "Stop recording before transcription."],
+        "disabled.stopBeforeBatch": [.german: "Aufnahme vor der Batch-Transkription stoppen.", .english: "Stop recording before batch transcription."],
+        "disabled.preparingTranscriptionInput": [.german: "Transkriptions-Input wird vorbereitet.", .english: "Preparing transcription input."],
+        "disabled.transcriptionRunning": [.german: "Transkription läuft bereits.", .english: "Transcription already running."],
+        "disabled.installFFmpeg": [.german: "Zuerst FFmpeg installieren.", .english: "Install FFmpeg first."],
+        "disabled.busy": [.german: "EchoPilot ist beschäftigt.", .english: "EchoPilot is busy."],
+        "disabled.generateSummaryFirst": [.german: "Zuerst eine Zusammenfassung erzeugen.", .english: "Generate a summary first."],
+        "disabled.fileMissing": [.german: "Datei existiert noch nicht.", .english: "File does not exist yet."],
+        "disabled.noTranscriptionInput": [.german: "Noch kein Transkriptions-Input-Ordner vorhanden.", .english: "No transcription input folder yet."],
+        "disabled.recorderPreparing": [.german: "EchoPilot bereitet die Aufnahme vor.", .english: "EchoPilot is preparing the recorder."],
+        "disabled.recordingRunning": [.german: "Aufzeichnung läuft bereits.", .english: "Recording is already running."],
+        "disabled.permissionsRequired": [.german: "Mikrofon und Screen/Systemaudio sind erforderlich.", .english: "Microphone and Screen/System Audio Recording permissions are required."],
+
         "prefs.title": [.german: "Einstellungen", .english: "Preferences"],
         "prefs.language": [.german: "Sprache", .english: "Language"],
         "prefs.language.help": [.german: "Automatisch nutzt Deutsch bei deutscher Systemsprache, sonst Englisch.", .english: "Automatic uses German for German system language and English otherwise."],
@@ -2498,9 +2632,9 @@ final class MeetingCaptureViewModel: ObservableObject {
     }
 
     var startRecordingDisabledReason: String? {
-        if isStarting { return "EchoPilot is preparing the recorder." }
-        if isRecording { return "Recording is already running." }
-        if !permissionsReady { return "Microphone and Screen/System Audio Recording permissions are required." }
+        if isStarting { return L10n.text("disabled.recorderPreparing") }
+        if isRecording { return L10n.text("disabled.recordingRunning") }
+        if !permissionsReady { return L10n.text("disabled.permissionsRequired") }
         return nil
     }
 
@@ -4597,7 +4731,7 @@ struct PreferencesView: View {
 
     private func settingsPermissionRow(_ title: String, status: String, granted: Bool, button: String, action: @escaping () -> Void) -> some View {
         HStack(alignment: .center, spacing: 10) {
-            Label(granted ? "OK" : "Missing", systemImage: granted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+            Label(granted ? L10n.text("status.ok", language: language) : L10n.text("status.missing", language: language), systemImage: granted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(granted ? .green : .orange)
                 .frame(width: 86, alignment: .leading)
@@ -4778,7 +4912,8 @@ final class EchoPilotPreferencesWindowController: NSObject, NSWindowDelegate {
     }
 
     private func addPermissionRow(to contentView: NSView, y: CGFloat, title: String, status: String, granted: Bool, buttonTitle: String, action: Selector) {
-        let state = label(granted ? "OK" : "Missing", frame: NSRect(x: 24, y: y + 2, width: 72, height: 18), font: .boldSystemFont(ofSize: 11), color: granted ? .systemGreen : .systemOrange)
+        let language = AppSettings.currentLanguage
+        let state = label(granted ? L10n.text("status.ok", language: language) : L10n.text("status.missing", language: language), frame: NSRect(x: 24, y: y + 2, width: 72, height: 18), font: .boldSystemFont(ofSize: 11), color: granted ? .systemGreen : .systemOrange)
         contentView.addSubview(state)
         let titleLabel = label(title, frame: NSRect(x: 102, y: y + 9, width: 170, height: 16), font: .boldSystemFont(ofSize: 11))
         contentView.addSubview(titleLabel)

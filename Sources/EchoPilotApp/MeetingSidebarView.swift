@@ -10,10 +10,10 @@ enum MeetingSidebarFilter: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .all: return "All"
-        case .needsTranscription: return "Needs transcription"
-        case .transcribed: return "Transcribed"
-        case .archived: return "Archived"
+        case .all: return L10n.text("sidebar.filter.all")
+        case .needsTranscription: return L10n.text("sidebar.filter.needsTranscription")
+        case .transcribed: return L10n.text("sidebar.filter.transcribed")
+        case .archived: return L10n.text("sidebar.filter.archived")
         }
     }
 }
@@ -44,10 +44,10 @@ struct MeetingSidebarView: View {
         VStack(spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Meetings")
+                    Text(L10n.text("sidebar.meetings"))
                         .font(.title3.bold())
                         .lineLimit(1)
-                    Text("\(visibleMeetings.count) shown")
+                    Text(L10n.format("sidebar.shownCount", visibleMeetings.count))
                         .font(.caption)
                         .foregroundStyle(EchoPilotTheme.secondaryText)
                 }
@@ -58,14 +58,14 @@ struct MeetingSidebarView: View {
                     Image(systemName: "plus")
                 }
                 .buttonStyle(.borderless)
-                .help("Prepare a new recording")
+                .help(L10n.text("sidebar.new.help"))
                 .keyboardShortcut("n", modifiers: [.command])
             }
 
-            TextField("Search meetings", text: $query)
+            TextField(L10n.text("sidebar.search"), text: $query)
                 .textFieldStyle(.roundedBorder)
 
-            Picker("Filter", selection: $filter) {
+            Picker(L10n.text("sidebar.filter"), selection: $filter) {
                 ForEach(MeetingSidebarFilter.allCases) { filter in
                     Text(filter.title).tag(filter)
                 }
@@ -73,7 +73,7 @@ struct MeetingSidebarView: View {
             .pickerStyle(.menu)
 
             if width >= 270 {
-                Toggle("Show archived", isOn: $vm.showArchivedMeetings)
+                Toggle(L10n.text("sidebar.showArchived"), isOn: $vm.showArchivedMeetings)
                     .toggleStyle(.checkbox)
                     .font(.caption)
                     .foregroundStyle(EchoPilotTheme.secondaryText)
@@ -102,9 +102,9 @@ struct MeetingSidebarView: View {
                         Image(systemName: "waveform")
                             .font(.largeTitle)
                             .foregroundStyle(EchoPilotTheme.mutedText)
-                        Text("No meetings")
+                        Text(L10n.text("sidebar.empty.title"))
                             .font(.headline)
-                        Text("Start a recording or adjust your filter.")
+                        Text(L10n.text("sidebar.empty.subtitle"))
                             .font(.caption)
                             .foregroundStyle(EchoPilotTheme.secondaryText)
                             .multilineTextAlignment(.center)
@@ -144,15 +144,15 @@ struct MeetingRowView: View {
                     .lineLimit(2)
                 HStack(spacing: 6) {
                     StatusChip(
-                        meeting.isFullyTranscribed ? "Ready" : "Open",
+                        meeting.isFullyTranscribed ? L10n.text("sidebar.status.ready") : L10n.text("sidebar.status.open"),
                         tone: meeting.isFullyTranscribed ? .success : .warning,
                         systemImage: meeting.isFullyTranscribed ? "checkmark" : "text.badge.plus"
                     )
                     if meeting.isArchived {
-                        StatusChip("Archived", tone: .neutral, systemImage: "archivebox")
+                        StatusChip(L10n.text("sidebar.filter.archived"), tone: .neutral, systemImage: "archivebox")
                     }
                     if meeting.pendingTranscriptCount > 0 {
-                        StatusChip("\(meeting.pendingTranscriptCount) open", tone: .warning)
+                        StatusChip(L10n.format("sidebar.openCount", meeting.pendingTranscriptCount), tone: .warning)
                     }
                 }
             }
@@ -166,8 +166,8 @@ struct MeetingRowView: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button(meeting.isArchived ? "Unarchive" : "Archive", action: archive)
-            Button("Delete", role: .destructive, action: delete)
+            Button(meeting.isArchived ? L10n.text("sidebar.unarchive") : L10n.text("sidebar.archive"), action: archive)
+            Button(L10n.text("sidebar.delete"), role: .destructive, action: delete)
         }
     }
 }

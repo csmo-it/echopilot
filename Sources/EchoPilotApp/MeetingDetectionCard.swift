@@ -14,24 +14,24 @@ struct MeetingDetectionCard: View {
         if let suggestion = vm.meetingSuggestion {
             return suggestion.detail
         }
-        return vm.meetingDeviceStatus.inMeeting ? "Meeting activity detected" : "No active meeting detected"
+        return vm.meetingDeviceStatus.inMeeting ? L10n.text("detection.activityDetected") : L10n.text("detection.noneDetected")
     }
 
     private var participants: String {
         let names = vm.meetingSuggestion?.participants ?? []
-        return names.isEmpty ? "Participants not detected yet" : names.joined(separator: ", ")
+        return names.isEmpty ? L10n.text("detection.participantsMissing") : names.joined(separator: ", ")
     }
 
     var body: some View {
         EchoCard(
-            "Smart meeting detection",
-            subtitle: "Local Teams/Zoom/Webex/Meet/Slack/browser context stays optional and permission-aware.",
+            L10n.text("detection.title"),
+            subtitle: L10n.text("detection.subtitle"),
             systemImage: hasSuggestion ? "video.badge.checkmark" : "video.slash"
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 12) {
                     StatusChip(
-                        hasSuggestion ? "Suggested" : "Idle",
+                        hasSuggestion ? L10n.text("detection.suggested") : L10n.text("detection.idle"),
                         tone: hasSuggestion ? .success : .neutral,
                         systemImage: hasSuggestion ? "sparkles" : "moon"
                     )
@@ -67,17 +67,17 @@ struct MeetingDetectionCard: View {
     }
 
     @ViewBuilder private var detectionActions: some View {
-        PrimaryButton("Use", systemImage: "checkmark", tone: .primary) {
+        PrimaryButton(L10n.text("detection.use"), systemImage: "checkmark", tone: .primary) {
             vm.prepareSuggestedRecording()
         }
         .frame(width: 110)
-        SecondaryCommandButton("Edit", systemImage: "pencil") {
+        SecondaryCommandButton(L10n.text("detection.edit"), systemImage: "pencil") {
             vm.prepareSuggestedRecording()
-            vm.status = "Suggestion loaded. Edit the meeting fields before recording."
+            vm.status = L10n.text("detection.status.loaded")
         }
-        SecondaryCommandButton("Ignore", systemImage: "xmark") {
+        SecondaryCommandButton(L10n.text("detection.ignore"), systemImage: "xmark") {
             vm.meetingSuggestion = nil
-            vm.status = "Meeting suggestion ignored."
+            vm.status = L10n.text("detection.status.ignored")
         }
     }
 }
