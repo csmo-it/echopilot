@@ -128,6 +128,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.stopRecordingRequested)) { _ in
             vm.stop()
         }
+        .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.cancelAutoRecordingRequested)) { _ in
+            vm.cancelAutoRecordingCountdown()
+        }
         .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.checkUpdatesRequested)) { _ in
             EchoPilotWindowController.shared.showApp()
             vm.checkForUpdates(showStatus: true)
@@ -138,7 +141,11 @@ struct ContentView: View {
             vm.refreshDependencies(showOverlayIfNeeded: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.languageChanged)) { _ in
+            EchoPilotUserNotifier.configureActions()
             vm.refreshLocalizedText()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.autoRecordSettingChanged)) { _ in
+            vm.autoRecordMeetingsEnabled = AppSettings.autoRecordMeetingsEnabled
         }
     }
 

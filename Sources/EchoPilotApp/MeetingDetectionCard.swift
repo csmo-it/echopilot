@@ -29,6 +29,23 @@ struct MeetingDetectionCard: View {
             systemImage: hasSuggestion ? "video.badge.checkmark" : "video.slash"
         ) {
             VStack(alignment: .leading, spacing: 12) {
+                Toggle(isOn: $vm.autoRecordMeetingsEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L10n.text("autoRecord.toggle"))
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(EchoPilotTheme.text)
+                        Text(L10n.text("autoRecord.help"))
+                            .font(.caption)
+                            .foregroundStyle(EchoPilotTheme.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .toggleStyle(.switch)
+
+                if let prompt = vm.autoRecordingPrompt {
+                    autoRecordingCountdown(prompt)
+                }
+
                 HStack(alignment: .top, spacing: 12) {
                     StatusChip(
                         hasSuggestion ? L10n.text("detection.suggested") : L10n.text("detection.idle"),
@@ -78,6 +95,56 @@ struct MeetingDetectionCard: View {
         SecondaryCommandButton(L10n.text("detection.ignore"), systemImage: "xmark") {
             vm.meetingSuggestion = nil
             vm.status = L10n.text("detection.status.ignored")
+        }
+    }
+
+    private func autoRecordingCountdown(_ prompt: AutoRecordingPrompt) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                countdownCopy(prompt)
+                Spacer()
+                countdownActions
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                countdownCopy(prompt)
+                countdownActions
+            }
+        }
+        .padding(12)
+        .background(EchoPilotTheme.warning.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(EchoPilotTheme.warning.opacity(0.35), lineWidth: 1)
+        )
+    }
+
+    private func countdownCopy(_ prompt: AutoRecordingPrompt) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(L10n.format("autoRecord.countdown", prompt.title, prompt.remainingSeconds))
+                    .font(.headline)
+                    .foregroundStyle(EchoPilotTheme.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(prompt.detail)
+                    .font(.caption)
+                    .foregroundStyle(EchoPilotTheme.secondaryText)
+                    .lineLimit(2)
+            }
+        } icon: {
+            Image(systemName: "timer")
+                .foregroundStyle(EchoPilotTheme.warning)
+        }
+    }
+
+    private var countdownActions: some View {
+        HStack(spacing: 8) {
+            SecondaryCommandButton(L10n.text("autoRecord.cancel"), systemImage: "xmark.circle") {
+                vm.cancelAutoRecordingCountdown()
+            }
+            PrimaryButton(L10n.text("autoRecord.startNow"), systemImage: "record.circle") {
+                vm.startPendingAutoRecordingNow()
+            }
+            .frame(width: 140)
         }
     }
 }
