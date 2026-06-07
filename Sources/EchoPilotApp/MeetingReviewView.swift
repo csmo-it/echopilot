@@ -43,16 +43,39 @@ struct MeetingReviewView: View {
     var body: some View {
         EchoCard("Review", subtitle: "Everything after transcription lands here.", systemImage: "doc.text.magnifyingglass") {
             VStack(alignment: .leading, spacing: 12) {
-                Picker("Review tab", selection: $selectedTab) {
-                    ForEach(MeetingReviewTab.allCases) { tab in
-                        Text(tab.title).tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-
+                reviewTabPicker
                 content
-                    .frame(minHeight: 300)
+                    .frame(minHeight: 260)
             }
+        }
+        .onAppear(perform: loadSelectedPreview)
+        .onChange(of: selectedTab) { _ in
+            loadSelectedPreview()
+        }
+        .onChange(of: vm.selectedMeetingID) { _ in
+            loadSelectedPreview()
+        }
+        .onChange(of: vm.outputDir) { _ in
+            loadSelectedPreview()
+        }
+    }
+
+    private var reviewTabPicker: some View {
+        ViewThatFits(in: .horizontal) {
+            Picker("Review tab", selection: $selectedTab) {
+                ForEach(MeetingReviewTab.allCases) { tab in
+                    Text(tab.title).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Picker("Review tab", selection: $selectedTab) {
+                ForEach(MeetingReviewTab.allCases) { tab in
+                    Text(tab.title).tag(tab)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(maxWidth: 260, alignment: .leading)
         }
     }
 
@@ -69,20 +92,14 @@ struct MeetingReviewView: View {
 
     private var summaryPane: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                PrimaryButton("Generate summary", systemImage: "doc.text", disabledReason: vm.outputDir == nil ? "Select a meeting first." : nil) {
-                    vm.generateSummary()
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    summaryActions
+                    Spacer()
                 }
-                .frame(width: 190)
-                SecondaryCommandButton("Share", systemImage: "square.and.arrow.up", disabledReason: vm.shareableURL(vm.selectedArtifactSummaryURL) == nil ? "Generate a summary first." : nil) {
-                    if let url = vm.shareableURL(vm.selectedArtifactSummaryURL) {
-                        share(url)
-                    }
+                VStack(alignment: .leading, spacing: 8) {
+                    summaryActions
                 }
-                SecondaryCommandButton("Generate AI handoff", systemImage: "shippingbox", disabledReason: vm.outputDir == nil ? "Select a meeting first." : nil) {
-                    vm.generateKIAgentExport()
-                }
-                Spacer()
             }
             Text(vm.artifactStatus)
                 .font(.callout)
@@ -96,23 +113,38 @@ struct MeetingReviewView: View {
         }
     }
 
+    @ViewBuilder private var summaryActions: some View {
+        PrimaryButton("Generate summary", systemImage: "doc.text", disabledReason: vm.outputDir == nil ? "Select a meeting first." : nil) {
+            vm.generateSummary()
+        }
+        .frame(width: 190)
+        SecondaryCommandButton("Share", systemImage: "square.and.arrow.up", disabledReason: vm.shareableURL(vm.selectedArtifactSummaryURL) == nil ? "Generate a summary first." : nil) {
+            if let url = vm.shareableURL(vm.selectedArtifactSummaryURL) {
+                share(url)
+            }
+        }
+        SecondaryCommandButton("Generate AI handoff", systemImage: "shippingbox", disabledReason: vm.outputDir == nil ? "Select a meeting first." : nil) {
+            vm.generateKIAgentExport()
+        }
+    }
+
     private var transcriptPane: some View {
         let kind = selectedTab.previewKind ?? .timeline
         return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(kind.title)
-                    .font(.headline)
-                    .foregroundStyle(EchoPilotTheme.text)
-                Spacer()
-                if let url = vm.transcriptURL(for: kind) {
-                    SecondaryCommandButton("Open file", systemImage: "arrow.up.right.square", disabledReason: vm.fileExists(url) ? nil : "File does not exist yet.") {
-                        NSWorkspace.shared.open(url)
-                    }
-                    SecondaryCommandButton("Share", systemImage: "square.and.arrow.up", disabledReason: vm.fileExists(url) ? nil : "File does not exist yet.") {
-                        share(url)
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    transcriptTitle(kind)
+                    Spacer()
+                    transcriptActions(for: kind)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    transcriptTitle(kind)
+                    HStack {
+                        transcriptActions(for: kind)
                     }
                 }
             }
+
             ScrollView {
                 Text(previewText(for: kind))
                     .font(.system(.caption, design: .monospaced))
@@ -123,25 +155,33 @@ struct MeetingReviewView: View {
             }
             .background(EchoPilotTheme.elevated, in: RoundedRectangle(cornerRadius: 8))
         }
-        .onAppear {
-            vm.loadTranscriptPreview(kind)
-        }
-        .onChange(of: selectedTab) { _ in
-            vm.loadTranscriptPreview(kind)
+    }
+
+    private func transcriptTitle(_ kind: TranscriptPreviewKind) -> some View {
+        Text(kind.title)
+            .font(.headline)
+            .foregroundStyle(EchoPilotTheme.text)
+    }
+
+    @ViewBuilder private func transcriptActions(for kind: TranscriptPreviewKind) -> some View {
+        if let url = vm.transcriptURL(for: kind) {
+            SecondaryCommandButton("Open file", systemImage: "arrow.up.right.square", disabledReason: vm.fileExists(url) ? nil : "File does not exist yet.") {
+                NSWorkspace.shared.open(url)
+            }
+            SecondaryCommandButton("Share", systemImage: "square.and.arrow.up", disabledReason: vm.fileExists(url) ? nil : "File does not exist yet.") {
+                share(url)
+            }
         }
     }
 
     private var filesPane: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                SecondaryCommandButton("Open meeting folder", systemImage: "folder", disabledReason: vm.outputDir == nil ? "Select a meeting first." : nil) {
-                    vm.openOutputFolder()
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    fileActions
                 }
-                SecondaryCommandButton("Open transcription input", systemImage: "folder.badge.gearshape", disabledReason: vm.transcriptionInputDir == nil ? "No transcription input folder yet." : nil) {
-                    vm.openTranscriptionInputFolder()
-                }
-                SecondaryCommandButton("Collect AI exports", systemImage: "tray.and.arrow.down") {
-                    vm.collectKIAgentExports()
+                VStack(alignment: .leading, spacing: 8) {
+                    fileActions
                 }
             }
             if let outputDir = vm.outputDir {
@@ -156,11 +196,28 @@ struct MeetingReviewView: View {
         }
     }
 
+    @ViewBuilder private var fileActions: some View {
+        SecondaryCommandButton("Open meeting folder", systemImage: "folder", disabledReason: vm.outputDir == nil ? "Select a meeting first." : nil) {
+            vm.openOutputFolder()
+        }
+        SecondaryCommandButton("Open transcription input", systemImage: "folder.badge.gearshape", disabledReason: vm.transcriptionInputDir == nil ? "No transcription input folder yet." : nil) {
+            vm.openTranscriptionInputFolder()
+        }
+        SecondaryCommandButton("Collect AI exports", systemImage: "tray.and.arrow.down") {
+            vm.collectKIAgentExports()
+        }
+    }
+
     private func previewText(for kind: TranscriptPreviewKind) -> String {
         if vm.transcriptPreviewKind != kind {
             return "Loading \(kind.title)..."
         }
         return vm.transcriptPreviewText
+    }
+
+    private func loadSelectedPreview() {
+        guard let kind = selectedTab.previewKind else { return }
+        vm.loadTranscriptPreview(kind)
     }
 
     private func previewFile(_ url: URL) -> some View {

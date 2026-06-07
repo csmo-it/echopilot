@@ -4957,6 +4957,7 @@ struct EchoPilotApp: App {
                 }
         }
         .windowStyle(.titleBar)
+        .defaultSize(width: 1180, height: 820)
 
         Settings {
             PreferencesView()

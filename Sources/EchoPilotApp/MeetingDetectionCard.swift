@@ -53,22 +53,31 @@ struct MeetingDetectionCard: View {
                 }
 
                 if hasSuggestion && !vm.isRecording && !vm.isStarting {
-                    HStack(spacing: 10) {
-                        PrimaryButton("Use", systemImage: "checkmark", tone: .primary) {
-                            vm.prepareSuggestedRecording()
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) {
+                            detectionActions
                         }
-                        .frame(width: 110)
-                        SecondaryCommandButton("Edit", systemImage: "pencil") {
-                            vm.prepareSuggestedRecording()
-                            vm.status = "Suggestion loaded. Edit the meeting fields before recording."
-                        }
-                        SecondaryCommandButton("Ignore", systemImage: "xmark") {
-                            vm.meetingSuggestion = nil
-                            vm.status = "Meeting suggestion ignored."
+                        VStack(alignment: .leading, spacing: 8) {
+                            detectionActions
                         }
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder private var detectionActions: some View {
+        PrimaryButton("Use", systemImage: "checkmark", tone: .primary) {
+            vm.prepareSuggestedRecording()
+        }
+        .frame(width: 110)
+        SecondaryCommandButton("Edit", systemImage: "pencil") {
+            vm.prepareSuggestedRecording()
+            vm.status = "Suggestion loaded. Edit the meeting fields before recording."
+        }
+        SecondaryCommandButton("Ignore", systemImage: "xmark") {
+            vm.meetingSuggestion = nil
+            vm.status = "Meeting suggestion ignored."
         }
     }
 }

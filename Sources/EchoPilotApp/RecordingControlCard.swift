@@ -37,12 +37,21 @@ struct RecordingControlCard: View {
     }
 
     private var metadataFields: some View {
-        Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
-            GridRow {
+        ViewThatFits(in: .horizontal) {
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+                GridRow {
+                    commandTextField("Meeting title", text: $vm.meetingTitle, prompt: "Weekly customer sync")
+                    commandTextField("Participants", text: $vm.participants, prompt: "Names or roles")
+                }
+                GridRow {
+                    commandTextField("Customer / project", text: $vm.customerProject, prompt: "Quartz, Synmedico, internal...")
+                    microphonePicker
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
                 commandTextField("Meeting title", text: $vm.meetingTitle, prompt: "Weekly customer sync")
                 commandTextField("Participants", text: $vm.participants, prompt: "Names or roles")
-            }
-            GridRow {
                 commandTextField("Customer / project", text: $vm.customerProject, prompt: "Quartz, Synmedico, internal...")
                 microphonePicker
             }
@@ -105,29 +114,45 @@ struct RecordingControlCard: View {
     }
 
     private var actionRow: some View {
-        HStack(alignment: .center, spacing: 12) {
-            PrimaryButton(primaryTitle, systemImage: primaryIcon, tone: primaryTone, disabledReason: disabledReason) {
-                vm.isRecording ? vm.stop() : vm.start()
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 12) {
+                recordButton
+                    .frame(width: 240)
+                actionHint
+                Spacer()
             }
-            .keyboardShortcut("r", modifiers: [.command])
-            .frame(width: 240)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(vm.isRecording ? "Recording \(echoPilotFormatDuration(vm.elapsed))" : nextActionHint)
-                    .font(.headline.monospacedDigit())
-                    .foregroundStyle(vm.isRecording ? EchoPilotTheme.recording : EchoPilotTheme.text)
-                if let disabledReason, !vm.isRecording {
-                    Text(disabledReason)
-                        .font(.caption)
-                        .foregroundStyle(EchoPilotTheme.warning)
-                } else {
-                    Text(vm.status)
-                        .font(.caption)
-                        .foregroundStyle(EchoPilotTheme.secondaryText)
-                        .lineLimit(2)
-                }
+            VStack(alignment: .leading, spacing: 10) {
+                recordButton
+                actionHint
             }
-            Spacer()
+        }
+    }
+
+    private var recordButton: some View {
+        PrimaryButton(primaryTitle, systemImage: primaryIcon, tone: primaryTone, disabledReason: disabledReason) {
+            vm.isRecording ? vm.stop() : vm.start()
+        }
+        .keyboardShortcut("r", modifiers: [.command])
+    }
+
+    private var actionHint: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(vm.isRecording ? "Recording \(echoPilotFormatDuration(vm.elapsed))" : nextActionHint)
+                .font(.headline.monospacedDigit())
+                .foregroundStyle(vm.isRecording ? EchoPilotTheme.recording : EchoPilotTheme.text)
+            if let disabledReason, !vm.isRecording {
+                Text(disabledReason)
+                    .font(.caption)
+                    .foregroundStyle(EchoPilotTheme.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(vm.status)
+                    .font(.caption)
+                    .foregroundStyle(EchoPilotTheme.secondaryText)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -143,20 +168,34 @@ struct AudioHealthMeters: View {
     @ObservedObject var vm: MeetingCaptureViewModel
 
     var body: some View {
-        HStack(spacing: 12) {
-            healthTile(
-                title: "System audio",
-                granted: vm.screenCapturePermissionGranted,
-                status: vm.screenCapturePermissionStatus,
-                level: { vm.liveLevel(for: .system) }
-            )
-            healthTile(
-                title: "Microphone",
-                granted: vm.microphonePermissionGranted,
-                status: vm.microphonePermissionStatus,
-                level: { vm.liveLevel(for: .microphone) }
-            )
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                systemTile
+                microphoneTile
+            }
+            VStack(spacing: 12) {
+                systemTile
+                microphoneTile
+            }
         }
+    }
+
+    private var systemTile: some View {
+        healthTile(
+            title: "System audio",
+            granted: vm.screenCapturePermissionGranted,
+            status: vm.screenCapturePermissionStatus,
+            level: { vm.liveLevel(for: .system) }
+        )
+    }
+
+    private var microphoneTile: some View {
+        healthTile(
+            title: "Microphone",
+            granted: vm.microphonePermissionGranted,
+            status: vm.microphonePermissionStatus,
+            level: { vm.liveLevel(for: .microphone) }
+        )
     }
 
     private func healthTile(title: String, granted: Bool, status: String, level: @escaping () -> Float) -> some View {

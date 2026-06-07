@@ -20,6 +20,7 @@ enum MeetingSidebarFilter: String, CaseIterable, Identifiable {
 
 struct MeetingSidebarView: View {
     @ObservedObject var vm: MeetingCaptureViewModel
+    let width: CGFloat
     @State private var query = ""
     @State private var filter: MeetingSidebarFilter = .all
 
@@ -45,6 +46,7 @@ struct MeetingSidebarView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Meetings")
                         .font(.title3.bold())
+                        .lineLimit(1)
                     Text("\(visibleMeetings.count) shown")
                         .font(.caption)
                         .foregroundStyle(EchoPilotTheme.secondaryText)
@@ -70,10 +72,12 @@ struct MeetingSidebarView: View {
             }
             .pickerStyle(.menu)
 
-            Toggle("Show archived", isOn: $vm.showArchivedMeetings)
-                .toggleStyle(.checkbox)
-                .font(.caption)
-                .foregroundStyle(EchoPilotTheme.secondaryText)
+            if width >= 270 {
+                Toggle("Show archived", isOn: $vm.showArchivedMeetings)
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                    .foregroundStyle(EchoPilotTheme.secondaryText)
+            }
 
             ScrollView {
                 LazyVStack(spacing: 8) {
@@ -109,8 +113,8 @@ struct MeetingSidebarView: View {
                 }
             }
         }
-        .padding(16)
-        .frame(width: 310)
+        .padding(width < 270 ? 12 : 16)
+        .frame(width: width)
         .background(EchoPilotTheme.background)
         .foregroundStyle(EchoPilotTheme.text)
     }
@@ -140,7 +144,7 @@ struct MeetingRowView: View {
                     .lineLimit(2)
                 HStack(spacing: 6) {
                     StatusChip(
-                        meeting.isFullyTranscribed ? "Ready" : "To transcribe",
+                        meeting.isFullyTranscribed ? "Ready" : "Open",
                         tone: meeting.isFullyTranscribed ? .success : .warning,
                         systemImage: meeting.isFullyTranscribed ? "checkmark" : "text.badge.plus"
                     )

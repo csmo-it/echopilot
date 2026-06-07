@@ -59,17 +59,23 @@ extension MeetingCaptureViewModel {
 
 struct ContentView: View {
     @StateObject private var vm = MeetingCaptureViewModel()
+    @State private var inspectorVisible = true
 
     var body: some View {
         ZStack {
-            HStack(spacing: 0) {
-                MeetingSidebarView(vm: vm)
-                Divider().overlay(EchoPilotTheme.stroke)
-                commandCenter
-                Divider().overlay(EchoPilotTheme.stroke)
-                TranscriptionInspectorView(vm: vm)
+            GeometryReader { proxy in
+                let layout = CommandCenterLayout(width: proxy.size.width)
+                HStack(spacing: 0) {
+                    MeetingSidebarView(vm: vm, width: layout.sidebarWidth)
+                    Divider().overlay(EchoPilotTheme.stroke)
+                    commandCenter(showCompactInspector: inspectorVisible && !layout.showSideInspector)
+                    if inspectorVisible && layout.showSideInspector {
+                        Divider().overlay(EchoPilotTheme.stroke)
+                        TranscriptionInspectorView(vm: vm, width: layout.inspectorWidth)
+                    }
+                }
             }
-            .frame(minWidth: 1280, minHeight: 760)
+            .frame(minWidth: 860, minHeight: 640)
             .background(EchoPilotTheme.background)
             .blur(radius: vm.showPermissionsOverlay ? 2 : 0)
             .disabled(vm.showPermissionsOverlay)
@@ -102,6 +108,13 @@ struct ContentView: View {
                     Label("Check Updates", systemImage: "arrow.down.circle")
                 }
                 .disabled(vm.isCheckingForUpdates)
+
+                Button {
+                    inspectorVisible.toggle()
+                } label: {
+                    Label(inspectorVisible ? "Hide Inspector" : "Show Inspector", systemImage: "sidebar.right")
+                }
+                .keyboardShortcut("i", modifiers: [.command, .option])
             }
         }
         .onAppear {
@@ -129,7 +142,7 @@ struct ContentView: View {
         }
     }
 
-    private var commandCenter: some View {
+    private func commandCenter(showCompactInspector: Bool) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 commandHeader
@@ -144,33 +157,73 @@ struct ContentView: View {
                 if vm.workflowStage == .review || vm.workflowStage == .export {
                     MeetingReviewView(vm: vm)
                 }
+                if showCompactInspector {
+                    TranscriptionInspectorView(vm: vm, width: nil, compact: true)
+                }
                 statusFooter
             }
-            .padding(24)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 18)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(EchoPilotTheme.background)
     }
 
     private var commandHeader: some View {
-        HStack(alignment: .top, spacing: 18) {
-            CommandCenterSectionHeader(
-                step: workflowTrail,
-                title: "Meeting Command Center",
-                subtitle: vm.workflowStage.subtitle
-            )
-            Spacer()
-            VStack(alignment: .trailing, spacing: 8) {
-                StatusChip(vm.workflowStage.label, tone: stageTone, systemImage: stageIcon)
-                Text(vm.nextRecommendedAction)
-                    .font(.headline)
-                    .foregroundStyle(EchoPilotTheme.text)
-                if vm.isRecording {
-                    Text(echoPilotFormatDuration(vm.elapsed))
-                        .font(.system(size: 28, weight: .bold, design: .monospaced))
-                        .foregroundStyle(EchoPilotTheme.recording)
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 18) {
+                CommandCenterSectionHeader(
+                    step: workflowTrail,
+                    title: "Meeting Command Center",
+                    subtitle: vm.workflowStage.subtitle
+                )
+                Spacer()
+                stageSummary(trailing: true)
             }
+
+            VStack(alignment: .leading, spacing: 12) {
+                CommandCenterSectionHeader(
+                    step: workflowTrail,
+                    title: "Meeting Command Center",
+                    subtitle: vm.workflowStage.subtitle
+                )
+                stageSummary(trailing: false)
+            }
+        }
+    }
+
+    private func stageSummary(trailing: Bool) -> some View {
+        VStack(alignment: trailing ? .trailing : .leading, spacing: 8) {
+            StatusChip(vm.workflowStage.label, tone: stageTone, systemImage: stageIcon)
+            Text(vm.nextRecommendedAction)
+                .font(.headline)
+                .foregroundStyle(EchoPilotTheme.text)
+                .lineLimit(2)
+                .multilineTextAlignment(trailing ? .trailing : .leading)
+            if vm.isRecording {
+                Text(echoPilotFormatDuration(vm.elapsed))
+                    .font(.system(size: 28, weight: .bold, design: .monospaced))
+                    .foregroundStyle(EchoPilotTheme.recording)
+            }
+        }
+    }
+
+    private struct CommandCenterLayout {
+        let width: CGFloat
+
+        var sidebarWidth: CGFloat {
+            if width < 980 { return 248 }
+            if width < 1160 { return 272 }
+            return 310
+        }
+
+        var inspectorWidth: CGFloat {
+            if width < 1280 { return 292 }
+            return 330
+        }
+
+        var showSideInspector: Bool {
+            width >= 1080
         }
     }
 
@@ -200,18 +253,32 @@ struct ContentView: View {
 
     private var postRecordingNextAction: some View {
         EchoCard("Next action", subtitle: "EchoPilot keeps the workflow narrow so you always know what comes next.", systemImage: "arrow.forward.circle") {
-            HStack(alignment: .center, spacing: 12) {
-                StatusChip(vm.workflowStage.label, tone: stageTone)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(vm.nextRecommendedAction)
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(EchoPilotTheme.text)
-                    Text(nextActionDetail)
-                        .font(.callout)
-                        .foregroundStyle(EchoPilotTheme.secondaryText)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 12) {
+                    nextActionCopy
+                    Spacer()
+                    nextActionButton
                 }
-                Spacer()
-                nextActionButton
+                VStack(alignment: .leading, spacing: 12) {
+                    nextActionCopy
+                    nextActionButton
+                }
+            }
+        }
+    }
+
+    private var nextActionCopy: some View {
+        HStack(alignment: .center, spacing: 12) {
+            StatusChip(vm.workflowStage.label, tone: stageTone)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(vm.nextRecommendedAction)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(EchoPilotTheme.text)
+                    .lineLimit(2)
+                Text(nextActionDetail)
+                    .font(.callout)
+                    .foregroundStyle(EchoPilotTheme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

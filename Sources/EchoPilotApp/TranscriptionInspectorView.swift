@@ -2,6 +2,14 @@ import SwiftUI
 
 struct TranscriptionInspectorView: View {
     @ObservedObject var vm: MeetingCaptureViewModel
+    let width: CGFloat?
+    let compact: Bool
+
+    init(vm: MeetingCaptureViewModel, width: CGFloat? = 330, compact: Bool = false) {
+        self.vm = vm
+        self.width = width
+        self.compact = compact
+    }
 
     private var installedModelSummary: String {
         let installed = vm.whisperModels.filter(\.installed).map(\.id)
@@ -19,9 +27,11 @@ struct TranscriptionInspectorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Inspector")
-                .font(.title3.bold())
-                .foregroundStyle(EchoPilotTheme.text)
+            if !compact {
+                Text("Inspector")
+                    .font(.title3.bold())
+                    .foregroundStyle(EchoPilotTheme.text)
+            }
 
             EchoCard("Transcription", subtitle: "Advanced controls stay here until they are relevant.", systemImage: "text.bubble") {
                 VStack(alignment: .leading, spacing: 12) {
@@ -115,7 +125,8 @@ struct TranscriptionInspectorView: View {
             Spacer(minLength: 0)
         }
         .padding(16)
-        .frame(width: 330)
+        .frame(width: width)
+        .frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
         .background(EchoPilotTheme.background)
         .foregroundStyle(EchoPilotTheme.text)
     }
