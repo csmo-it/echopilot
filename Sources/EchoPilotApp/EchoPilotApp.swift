@@ -373,9 +373,16 @@ enum MeetingCallDetector {
         if let teamsAXSuggestion = await detectTeamsCallFromAccessibility() {
             return teamsAXSuggestion
         }
+        if let windowTitleSuggestion = await detectMeetingFromWindowTitles() {
+            return windowTitleSuggestion
+        }
         if let teamsLogSuggestion = detectTeamsCallFromLogs() {
             return teamsLogSuggestion
         }
+        return nil
+    }
+
+    private static func detectMeetingFromWindowTitles() async -> MeetingSuggestion? {
         // Window-title detection uses ScreenCaptureKit and must not trigger the
         // macOS Screen Recording permission prompt during idle app startup.
         // Only run it after the user has already granted permission.
@@ -408,9 +415,13 @@ enum MeetingCallDetector {
                 let appLooksLikeBrowser = browserAppFragments.contains { appHaystack.contains($0) }
                 let meetingClientTitleLooksLikeCall = meetingClientTitleFragments.contains { titleHaystack.contains($0) }
                 let browserTitleLooksLikeMeetingService = browserMeetingTitleFragments.contains { titleHaystack.contains($0) }
-                guard (appLooksLikeMeetingClient && meetingClientTitleLooksLikeCall) || (appLooksLikeBrowser && browserTitleLooksLikeMeetingService) else { continue }
-                let detail = title.isEmpty ? appName : "\(appName): \(title)"
-                return MeetingSuggestion(appName: appName.isEmpty ? "Meeting-App" : appName, detail: detail)
+                let cleanedTitle = meetingTitleCandidate(from: title, appName: appName)
+                guard (appLooksLikeMeetingClient && (meetingClientTitleLooksLikeCall || cleanedTitle != nil))
+                    || (appLooksLikeBrowser && browserTitleLooksLikeMeetingService)
+                else { continue }
+                let displayAppName = appName.isEmpty ? "Meeting-App" : appName
+                let detail = cleanedTitle.map { "\(displayAppName): \($0)" } ?? (title.isEmpty ? displayAppName : "\(displayAppName): \(title)")
+                return MeetingSuggestion(appName: displayAppName, detail: detail, title: cleanedTitle)
             }
         } catch {
             // ScreenCaptureKit may need permission. Window-title detection is best-effort.
@@ -466,11 +477,67 @@ enum MeetingCallDetector {
     private static func teamsMeetingTitle(from window: AXUIElement) -> String? {
         let rawTitle = axString(window, kAXTitleAttribute as String).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !rawTitle.isEmpty else { return nil }
+        if let cleaned = meetingTitleCandidate(from: rawTitle, appName: "Microsoft Teams") {
+            return cleaned
+        }
         let viewLabels = ["Kompakte Besprechungsansicht", "Compact meeting view", "Besprechungsansicht", "Meeting view"]
         let segments = rawTitle.components(separatedBy: " | ")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         return segments.first { !viewLabels.contains($0) } ?? segments.first ?? rawTitle
+    }
+
+    private static func meetingTitleCandidate(from rawTitle: String, appName: String) -> String? {
+        let trimmed = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let separators = [" | ", " - ", " — ", " – "]
+        var candidates: [String] = []
+        for separator in separators where trimmed.contains(separator) {
+            candidates.append(contentsOf: trimmed.components(separatedBy: separator))
+        }
+        candidates.append(trimmed)
+
+        return candidates
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { isUsableMeetingTitle($0, appName: appName) }
+    }
+
+    private static func isUsableMeetingTitle(_ value: String, appName: String) -> Bool {
+        let title = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard title.count >= 3 else { return false }
+        guard title.rangeOfCharacter(from: .alphanumerics) != nil else { return false }
+
+        let lower = title.lowercased()
+        let appLower = appName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let rejectedExact = [
+            appLower,
+            "microsoft teams",
+            "teams",
+            "zoom",
+            "zoom meeting",
+            "google meet",
+            "webex",
+            "meeting",
+            "call",
+            "besprechung",
+            "besprechungsansicht",
+            "kompakte besprechungsansicht",
+            "compact meeting view",
+            "meeting view"
+        ].filter { !$0.isEmpty }
+        if rejectedExact.contains(lower) { return false }
+
+        let rejectedFragments = [
+            "meeting controls",
+            "besprechungssteuerung",
+            "elapsed time",
+            "verstrichene zeit",
+            "meet.google.com",
+            "teams.microsoft.com",
+            "zoom.us/j/"
+        ]
+        return !rejectedFragments.contains { lower.contains($0) }
     }
 
     private static func teamsParticipantNames(in window: AXUIElement) -> [String] {
@@ -3421,7 +3488,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         let shouldReplaceExisting = allowSelectedMeetingOverride && hasSelectedMeeting
 
         var didApply = false
-        if shouldReplaceExisting || meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        if shouldReplaceExisting || shouldReplaceDraftMeetingTitle,
            let title = suggestedMeetingTitle(from: suggestion) {
             meetingTitle = title
             didApply = true
@@ -3450,9 +3517,60 @@ final class MeetingCaptureViewModel: ObservableObject {
     private func suggestedMeetingTitle(from suggestion: MeetingSuggestion?) -> String? {
         guard let suggestion else { return nil }
         if let title = suggestion.title, !title.isEmpty { return title }
-        if suggestion.detail.contains(":") { return suggestion.detail }
-        if suggestion.appName != "Meeting", suggestion.appName != "Meeting-App" { return suggestion.appName }
+        if let title = meetingTitleFromSuggestionDetail(suggestion.detail, appName: suggestion.appName) { return title }
         return nil
+    }
+
+    private var shouldReplaceDraftMeetingTitle: Bool {
+        let current = meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        return current.isEmpty || isGenericMeetingTitle(current)
+    }
+
+    private func meetingTitleFromSuggestionDetail(_ detail: String, appName: String) -> String? {
+        guard detail.contains(":") else { return nil }
+        let parts = detail.components(separatedBy: ":")
+        let candidate = parts.dropFirst().joined(separator: ":").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !candidate.isEmpty, !isGenericMeetingTitle(candidate), candidate.lowercased() != appName.lowercased() else { return nil }
+        return candidate
+    }
+
+    private func isGenericMeetingTitle(_ title: String) -> Bool {
+        let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let genericTitles = [
+            "microsoft teams",
+            "teams",
+            "zoom",
+            "zoom meeting",
+            "google meet",
+            "meeting",
+            "meeting-app",
+            L10n.text("detection.activityDetected").lowercased()
+        ]
+        if genericTitles.contains(normalized) { return true }
+        let genericFragments = [
+            "meet.google.com",
+            "teams.microsoft.com",
+            "zoom.us/j/",
+            "webex.com",
+            "erkannt aus lokalem teams-log"
+        ]
+        if genericFragments.contains(where: { normalized.contains($0) }) { return true }
+        return normalized.hasPrefix("teams-call ")
+    }
+
+    private func shouldRefreshMeetingSuggestion(_ suggestion: MeetingSuggestion) -> Bool {
+        suggestedMeetingTitle(from: suggestion) == nil || isGenericMeetingTitle(suggestedMeetingTitle(from: suggestion) ?? "")
+    }
+
+    private func betterMeetingSuggestion(_ candidate: MeetingSuggestion, than current: MeetingSuggestion) -> Bool {
+        let candidateTitle = suggestedMeetingTitle(from: candidate)
+        let currentTitle = suggestedMeetingTitle(from: current)
+        if candidateTitle != nil, currentTitle == nil { return true }
+        if let candidateTitle, let currentTitle, isGenericMeetingTitle(currentTitle), !isGenericMeetingTitle(candidateTitle) {
+            return true
+        }
+        if candidate.participants.count > current.participants.count { return true }
+        return false
     }
 
     private func cancelAutoRecordingCountdown(suppressCurrent: Bool) {
@@ -3936,8 +4054,16 @@ final class MeetingCaptureViewModel: ObservableObject {
             cancelAutoRecordingCountdown(suppressCurrent: false)
             return
         }
-        if meetingSuggestion != nil {
-            maybeScheduleAutoRecording(suggestion: meetingSuggestion, fallbackDetail: deviceStatus.summary())
+        if let currentSuggestion = meetingSuggestion {
+            if shouldRefreshMeetingSuggestion(currentSuggestion),
+               let refreshedSuggestion = await MeetingCallDetector.detectMeetingContext(),
+               betterMeetingSuggestion(refreshedSuggestion, than: currentSuggestion) {
+                meetingSuggestion = refreshedSuggestion
+                _ = applyMeetingSuggestionToDraftIfNeeded(refreshedSuggestion)
+                maybeScheduleAutoRecording(suggestion: refreshedSuggestion, fallbackDetail: deviceStatus.summary())
+            } else {
+                maybeScheduleAutoRecording(suggestion: currentSuggestion, fallbackDetail: deviceStatus.summary())
+            }
             return
         }
         if let suggestion = await MeetingCallDetector.detectMeetingContext() {
