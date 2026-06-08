@@ -1783,6 +1783,7 @@ enum L10n {
         "command.next.completePermissions": [.german: "Berechtigungen vervollständigen", .english: "Complete permissions"],
         "command.next.transcribe": [.german: "Lokal transkribieren", .english: "Transcribe locally"],
         "command.next.review": [.german: "Meeting-Notizen prüfen", .english: "Review meeting notes"],
+        "command.next.reviewTranscripts": [.german: "Transkripte ansehen", .english: "Review transcripts"],
         "command.next.export": [.german: "Handoff-Dateien teilen oder sammeln", .english: "Share or collect handoff files"],
         "command.nextDetail.prepare": [.german: "Meeting-Kontext ausfüllen und Mikrofon wählen.", .english: "Fill meeting context and choose the microphone."],
         "command.nextDetail.record": [.german: "Die aktuelle Aufnahme bleibt lokal. Stoppen, um die Transkription vorzubereiten.", .english: "The current recording is local. Stop it to prepare transcription input."],
@@ -1898,6 +1899,8 @@ enum L10n {
         "review.files.localNotice": [.german: "Dateien bleiben lokal. EchoPilot lädt Aufnahmen oder Transkripte nicht selbst hoch.", .english: "Files are local. EchoPilot does not upload recordings or transcripts by itself."],
         "review.loading": [.german: "%@ wird geladen ...", .english: "Loading %@..."],
         "review.readFailed": [.german: "%@ konnte nicht gelesen werden.", .english: "Could not read %@."],
+        "inspector.files.title": [.german: "Transkripte & Ordner", .english: "Transcripts & folders"],
+        "inspector.files.subtitle": [.german: "Schnellzugriff auf Review, Dateien und lokale Ordner.", .english: "Quick access to review, files, and local folders."],
         "disabled.selectMeeting": [.german: "Zuerst ein Meeting auswählen.", .english: "Select a meeting first."],
         "disabled.selectOrRecordMeeting": [.german: "Zuerst ein Meeting auswählen oder aufnehmen.", .english: "Select or record a meeting first."],
         "disabled.stopBeforeTranscription": [.german: "Aufnahme vor der Transkription stoppen.", .english: "Stop recording before transcription."],
@@ -2061,6 +2064,7 @@ enum L10n {
         "transcripts.hide": [.german: "Transkripte einklappen", .english: "Collapse transcripts"],
         "transcripts.collapsed": [.german: "%@ ausgeblendet", .english: "%@ hidden"],
         "transcripts.openFile": [.german: "Datei öffnen", .english: "Open File"],
+        "transcripts.revealFile": [.german: "Im Finder zeigen", .english: "Reveal in Finder"],
         "transcripts.share": [.german: "Teilen…", .english: "Share…"],
         "artifacts.title": [.german: "Meeting Notes & Export", .english: "Meeting Notes & Export"],
         "artifacts.summary": [.german: "Zusammenfassung erstellen", .english: "Create Summary"],
@@ -2703,6 +2707,7 @@ final class MeetingCaptureViewModel: ObservableObject {
     @Published var artifactTargetID: String?
     @Published var summaryURL: URL?
     @Published var kiAgentExportURL: URL?
+    @Published var selectedReviewTab: MeetingReviewTab = .summary
     @Published var transcriptPreviewKind: TranscriptPreviewKind = .timeline
     @Published var transcriptPreviewTitle = "Timeline"
     @Published var transcriptPreviewText = L10n.text("transcription.previewEmpty")
@@ -3142,8 +3147,12 @@ final class MeetingCaptureViewModel: ObservableObject {
     }
 
     func openTranscriptionInputFolder() {
-        guard let transcriptionInputDir else { return }
-        NSWorkspace.shared.open(transcriptionInputDir)
+        guard let folder = transcriptionInputFolderURL else { return }
+        NSWorkspace.shared.open(folder)
+    }
+
+    var transcriptionInputFolderURL: URL? {
+        transcriptionInputDir ?? outputDir?.appendingPathComponent("transcription-input", isDirectory: true)
     }
 
     func refreshMeetings() {
@@ -3164,6 +3173,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         summaryURL = nil
         kiAgentExportURL = nil
         artifactTargetID = nil
+        selectedReviewTab = .summary
         transcriptPreviewKind = .timeline
         transcriptPreviewTitle = "Timeline"
         transcriptPreviewText = L10n.text("transcription.previewEmpty")
@@ -3221,9 +3231,50 @@ final class MeetingCaptureViewModel: ObservableObject {
             consentConfirmed = false
             selectedMeetingArchived = false
         }
-        let combinedTimeline = meeting.url.appendingPathComponent("transcription-input/combined-timeline.md")
-        loadTranscriptPreview(FileManager.default.fileExists(atPath: combinedTimeline.path) ? .combinedTimeline : .timeline)
+        let previewKind = defaultTranscriptPreviewKind(for: meeting.url)
+        selectedReviewTab = previewKind.map(reviewTab(for:)) ?? .summary
+        loadTranscriptPreview(previewKind ?? .timeline)
         status = L10n.format("status.meetingSelected", meeting.title)
+    }
+
+    func showTranscriptReview() {
+        let previewKind = defaultTranscriptPreviewKind(for: outputDir) ?? .timeline
+        selectedReviewTab = reviewTab(for: previewKind)
+        loadTranscriptPreview(previewKind)
+    }
+
+    func openCurrentTranscriptFile() {
+        guard let url = transcriptURL(for: transcriptPreviewKind), fileExists(url) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    func revealCurrentTranscriptFile() {
+        guard let url = transcriptURL(for: transcriptPreviewKind), fileExists(url) else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    private func defaultTranscriptPreviewKind(for meetingDir: URL?) -> TranscriptPreviewKind? {
+        guard let meetingDir else { return nil }
+        let preferred: [TranscriptPreviewKind] = [.combinedTimeline, .timeline, .combinedHandover, .system, .microphone, .kiHandover]
+        return preferred.first { kind in
+            let url = meetingDir.appendingPathComponent(kind.relativePath)
+            return FileManager.default.fileExists(atPath: url.path)
+        }
+    }
+
+    private func reviewTab(for kind: TranscriptPreviewKind) -> MeetingReviewTab {
+        switch kind {
+        case .combinedTimeline, .timeline:
+            return .timeline
+        case .combinedHandover:
+            return .combined
+        case .system:
+            return .system
+        case .microphone:
+            return .microphone
+        case .kiHandover:
+            return .handoff
+        }
     }
 
     func selectArtifactTarget(_ target: MeetingArtifactTarget) {

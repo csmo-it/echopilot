@@ -74,6 +74,27 @@ struct TranscriptionInspectorView: View {
                 }
             }
 
+            EchoCard(L10n.text("inspector.files.title"), subtitle: L10n.text("inspector.files.subtitle"), systemImage: "folder") {
+                VStack(alignment: .leading, spacing: 8) {
+                    SecondaryCommandButton(L10n.text("command.next.reviewTranscripts"), systemImage: "doc.text.magnifyingglass", disabledReason: vm.outputDir == nil ? L10n.text("disabled.selectMeeting") : nil) {
+                        vm.showTranscriptReview()
+                    }
+                    SecondaryCommandButton(L10n.text("transcripts.openFile"), systemImage: "arrow.up.right.square", disabledReason: currentTranscriptDisabledReason) {
+                        vm.openCurrentTranscriptFile()
+                    }
+                    SecondaryCommandButton(L10n.text("transcripts.revealFile"), systemImage: "scope", disabledReason: currentTranscriptDisabledReason) {
+                        vm.revealCurrentTranscriptFile()
+                    }
+                    Divider()
+                    SecondaryCommandButton(L10n.text("review.openMeetingFolder"), systemImage: "folder", disabledReason: vm.outputDir == nil ? L10n.text("disabled.selectMeeting") : nil) {
+                        vm.openOutputFolder()
+                    }
+                    SecondaryCommandButton(L10n.text("review.openTranscriptionInput"), systemImage: "folder.badge.gearshape", disabledReason: vm.transcriptionInputFolderURL == nil ? L10n.text("disabled.noTranscriptionInput") : nil) {
+                        vm.openTranscriptionInputFolder()
+                    }
+                }
+            }
+
             EchoCard(L10n.text("batch.automation"), subtitle: L10n.text("batch.automation.subtitle"), systemImage: "clock.arrow.2.circlepath") {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
@@ -120,5 +141,12 @@ struct TranscriptionInspectorView: View {
         if vm.isProcessing || vm.isTranscribing { return L10n.text("disabled.busy") }
         if !vm.ffmpegInstalled { return L10n.text("disabled.installFFmpeg") }
         return nil
+    }
+
+    private var currentTranscriptDisabledReason: String? {
+        guard let url = vm.transcriptURL(for: vm.transcriptPreviewKind) else {
+            return L10n.text("disabled.selectMeeting")
+        }
+        return vm.fileExists(url) ? nil : L10n.text("disabled.fileMissing")
     }
 }

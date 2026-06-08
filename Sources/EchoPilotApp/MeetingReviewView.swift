@@ -24,21 +24,10 @@ enum MeetingReviewTab: String, CaseIterable, Identifiable {
         }
     }
 
-    var previewKind: TranscriptPreviewKind? {
-        switch self {
-        case .summary, .files: return nil
-        case .timeline: return .combinedTimeline
-        case .combined: return .combinedHandover
-        case .system: return .system
-        case .microphone: return .microphone
-        case .handoff: return .kiHandover
-        }
-    }
 }
 
 struct MeetingReviewView: View {
     @ObservedObject var vm: MeetingCaptureViewModel
-    @State private var selectedTab: MeetingReviewTab = .summary
 
     var body: some View {
         EchoCard(L10n.text("workflow.review"), subtitle: L10n.text("review.subtitle"), systemImage: "doc.text.magnifyingglass") {
@@ -49,7 +38,7 @@ struct MeetingReviewView: View {
             }
         }
         .onAppear(perform: loadSelectedPreview)
-        .onChange(of: selectedTab) { _ in
+        .onChange(of: vm.selectedReviewTab) { _ in
             loadSelectedPreview()
         }
         .onChange(of: vm.selectedMeetingID) { _ in
@@ -62,14 +51,14 @@ struct MeetingReviewView: View {
 
     private var reviewTabPicker: some View {
         ViewThatFits(in: .horizontal) {
-            Picker(L10n.text("review.tabPicker"), selection: $selectedTab) {
+            Picker(L10n.text("review.tabPicker"), selection: $vm.selectedReviewTab) {
                 ForEach(MeetingReviewTab.allCases) { tab in
                     Text(tab.title).tag(tab)
                 }
             }
             .pickerStyle(.segmented)
 
-            Picker(L10n.text("review.tabPicker"), selection: $selectedTab) {
+            Picker(L10n.text("review.tabPicker"), selection: $vm.selectedReviewTab) {
                 ForEach(MeetingReviewTab.allCases) { tab in
                     Text(tab.title).tag(tab)
                 }
@@ -80,7 +69,7 @@ struct MeetingReviewView: View {
     }
 
     @ViewBuilder private var content: some View {
-        switch selectedTab {
+        switch vm.selectedReviewTab {
         case .summary:
             summaryPane
         case .files:
@@ -129,7 +118,7 @@ struct MeetingReviewView: View {
     }
 
     private var transcriptPane: some View {
-        let kind = selectedTab.previewKind ?? .timeline
+        let kind = previewKind(for: vm.selectedReviewTab) ?? .timeline
         return VStack(alignment: .leading, spacing: 10) {
             ViewThatFits(in: .horizontal) {
                 HStack {
@@ -216,8 +205,25 @@ struct MeetingReviewView: View {
     }
 
     private func loadSelectedPreview() {
-        guard let kind = selectedTab.previewKind else { return }
+        guard let kind = previewKind(for: vm.selectedReviewTab) else { return }
         vm.loadTranscriptPreview(kind)
+    }
+
+    private func previewKind(for tab: MeetingReviewTab) -> TranscriptPreviewKind? {
+        switch tab {
+        case .summary, .files:
+            return nil
+        case .timeline:
+            return vm.fileExists(vm.transcriptURL(for: .combinedTimeline)) ? .combinedTimeline : .timeline
+        case .combined:
+            return .combinedHandover
+        case .system:
+            return .system
+        case .microphone:
+            return .microphone
+        case .handoff:
+            return .kiHandover
+        }
     }
 
     private func previewFile(_ url: URL) -> some View {

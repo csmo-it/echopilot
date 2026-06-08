@@ -51,7 +51,7 @@ extension MeetingCaptureViewModel {
         case .prepare: return canStartRecording ? L10n.text("button.startRecording") : L10n.text("command.next.completePermissions")
         case .record: return L10n.text("button.stopRecording")
         case .transcribe: return L10n.text("command.next.transcribe")
-        case .review: return L10n.text("command.next.review")
+        case .review: return L10n.text("command.next.reviewTranscripts")
         case .export: return L10n.text("command.next.export")
         }
     }
@@ -337,9 +337,10 @@ struct ContentView: View {
             }
             .frame(width: 210)
         case .review:
-            SecondaryCommandButton(L10n.text("review.generateHandoff"), systemImage: "shippingbox", disabledReason: vm.outputDir == nil ? L10n.text("disabled.selectMeeting") : nil) {
-                vm.generateKIAgentExport()
+            PrimaryButton(L10n.text("command.next.reviewTranscripts"), systemImage: "doc.text.magnifyingglass", disabledReason: vm.outputDir == nil ? L10n.text("disabled.selectMeeting") : nil) {
+                vm.showTranscriptReview()
             }
+            .frame(width: 210)
         case .export:
             SecondaryCommandButton(L10n.text("review.openExportFolder"), systemImage: "folder", action: vm.openKIAgentExportFolder)
         }
