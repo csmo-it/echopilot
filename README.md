@@ -217,8 +217,3 @@ scripts/set-echopilot-version.sh 0.1.1 2
 ```
 
 For GitHub Releases, tag releases with the same public version, usually prefixed with `v`, for example `v0.1.1`. EchoPilot's startup update check compares that release tag against the installed app version.
-
-## Publishing and releases
-
-- See [`docs/PUBLICATION.md`](docs/PUBLICATION.md) before making a repository public.
-- See [`docs/RELEASES.md`](docs/RELEASES.md) for build/release distribution guidance.
