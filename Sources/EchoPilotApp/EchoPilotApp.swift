@@ -1862,7 +1862,7 @@ enum L10n {
         "recording.next.prepare": [.german: "Nächster Schritt: vorbereiten und aufnehmen", .english: "Next: Prepare and record"],
         "meeting.placeholder.title": [.german: "Wöchentliches Kundengespräch", .english: "Weekly customer sync"],
         "meeting.placeholder.participants": [.german: "Namen oder Rollen", .english: "Names or roles"],
-        "meeting.placeholder.customerProject": [.german: "Quartz, Synmedico, intern ...", .english: "Quartz, Synmedico, internal..."],
+        "meeting.placeholder.customerProject": [.german: "Kunde, Projekt oder Thema", .english: "Customer, project, or topic"],
 
         "inspector.title": [.german: "Inspector", .english: "Inspector"],
         "inspector.transcription.subtitle": [.german: "Erweiterte Kontrollen bleiben hier, bis sie relevant sind.", .english: "Advanced controls stay here until they are relevant."],
