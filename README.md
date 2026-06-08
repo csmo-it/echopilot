@@ -6,7 +6,8 @@ It is designed for local-first meeting workflows: record only after consent, tra
 
 ## App Preview
 
-<img width="1576" height="1034" alt="image" src="https://github.com/user-attachments/assets/4c8d4052-a050-429d-8d7a-faeda71f6153" />
+<img width="1571" height="1037" alt="image" src="https://github.com/user-attachments/assets/8bb95a05-0376-40b7-b5a3-81e5c9025314" />
+
 
 ## Features
 
