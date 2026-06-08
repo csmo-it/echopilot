@@ -3023,6 +3023,7 @@ final class MeetingCaptureViewModel: ObservableObject {
             status = L10n.text("status.permissionsRequired")
             return
         }
+        applyMeetingSuggestionToDraftIfNeeded(meetingSuggestion, allowSelectedMeetingOverride: true)
         isStarting = true
         Task {
             do {
@@ -3403,14 +3404,37 @@ final class MeetingCaptureViewModel: ObservableObject {
     func prepareSuggestedRecording() {
         let suggestion = meetingSuggestion
         prepareNewRecording()
-        if let title = suggestedMeetingTitle(from: suggestion) {
+        _ = applyMeetingSuggestionToDraftIfNeeded(suggestion, showStatus: true)
+        meetingSuggestion = nil
+    }
+
+    @discardableResult
+    private func applyMeetingSuggestionToDraftIfNeeded(
+        _ suggestion: MeetingSuggestion?,
+        showStatus: Bool = false,
+        allowSelectedMeetingOverride: Bool = false
+    ) -> Bool {
+        guard let suggestion else { return false }
+        guard appendTargetMeetingID == nil else { return false }
+        let hasSelectedMeeting = selectedMeetingID != nil || outputDir != nil
+        guard allowSelectedMeetingOverride || !hasSelectedMeeting else { return false }
+        let shouldReplaceExisting = allowSelectedMeetingOverride && hasSelectedMeeting
+
+        var didApply = false
+        if shouldReplaceExisting || meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let title = suggestedMeetingTitle(from: suggestion) {
             meetingTitle = title
+            didApply = true
+        }
+        if shouldReplaceExisting || participants.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !suggestion.participants.isEmpty {
+            participants = suggestion.participants.joined(separator: ", ")
+            didApply = true
+        }
+        if didApply, showStatus {
             status = L10n.text("status.suggestionPrepared")
         }
-        if let participantList = suggestion?.participants, !participantList.isEmpty {
-            participants = participantList.joined(separator: ", ")
-        }
-        meetingSuggestion = nil
+        return didApply
     }
 
     func cancelAutoRecordingCountdown() {
@@ -3918,6 +3942,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         }
         if let suggestion = await MeetingCallDetector.detectMeetingContext() {
             meetingSuggestion = suggestion
+            _ = applyMeetingSuggestionToDraftIfNeeded(suggestion)
             maybeScheduleAutoRecording(suggestion: suggestion, fallbackDetail: deviceStatus.summary())
         } else {
             maybeScheduleAutoRecording(suggestion: nil, fallbackDetail: deviceStatus.summary())
