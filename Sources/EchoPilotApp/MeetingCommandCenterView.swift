@@ -94,13 +94,14 @@ struct ContentView: View {
                     Label(L10n.text("button.newRecording"), systemImage: "plus")
                 }
                 .keyboardShortcut("n", modifiers: [.command])
+                .help(L10n.text("button.newRecording"))
 
                 Button {
-                    vm.refreshPermissions(showOverlayIfNeeded: true)
-                    vm.refreshDependencies(showOverlayIfNeeded: true)
+                    vm.reviewSetup()
                 } label: {
                     Label(L10n.text("actions.checkPermissions"), systemImage: "lock.shield")
                 }
+                .help(L10n.text("actions.checkPermissions"))
 
                 Button {
                     vm.checkForUpdates(showStatus: true)
@@ -108,13 +109,16 @@ struct ContentView: View {
                     Label(L10n.text("actions.checkUpdates"), systemImage: "arrow.down.circle")
                 }
                 .disabled(vm.isCheckingForUpdates)
+                .help(L10n.text("actions.checkUpdates"))
 
                 Button {
                     inspectorVisible.toggle()
+                    vm.status = L10n.text(inspectorVisible ? "inspector.visibleStatus" : "inspector.hiddenStatus")
                 } label: {
                     Label(inspectorVisible ? L10n.text("command.hideInspector") : L10n.text("command.showInspector"), systemImage: "sidebar.right")
                 }
                 .keyboardShortcut("i", modifiers: [.command, .option])
+                .help(inspectorVisible ? L10n.text("command.hideInspector") : L10n.text("command.showInspector"))
             }
         }
         .onAppear {
@@ -137,8 +141,7 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.checkPermissionsRequested)) { _ in
             EchoPilotWindowController.shared.showApp()
-            vm.refreshPermissions(showOverlayIfNeeded: true)
-            vm.refreshDependencies(showOverlayIfNeeded: true)
+            vm.reviewSetup()
         }
         .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.languageChanged)) { _ in
             EchoPilotUserNotifier.configureActions()
@@ -156,6 +159,8 @@ struct ContentView: View {
                 commandHeader
                 if let updateInfo = vm.updateInfo {
                     updateBanner(updateInfo)
+                } else if !vm.updateCheckStatus.isEmpty {
+                    updateStatusBanner
                 }
                 if !vm.permissionsReady {
                     permissionWarning
@@ -369,6 +374,15 @@ struct ContentView: View {
                     vm.dismissUpdateInfo()
                 }
             }
+        }
+    }
+
+    private var updateStatusBanner: some View {
+        EchoCard(L10n.text("update.statusTitle"), systemImage: "arrow.down.circle") {
+            Text(vm.updateCheckStatus)
+                .font(.callout)
+                .foregroundStyle(EchoPilotTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

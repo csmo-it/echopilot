@@ -1779,6 +1779,8 @@ enum L10n {
         "command.title": [.german: "Meeting-Kommandozentrale", .english: "Meeting Command Center"],
         "command.hideInspector": [.german: "Inspector ausblenden", .english: "Hide Inspector"],
         "command.showInspector": [.german: "Inspector anzeigen", .english: "Show Inspector"],
+        "inspector.hiddenStatus": [.german: "Inspector ausgeblendet.", .english: "Inspector hidden."],
+        "inspector.visibleStatus": [.german: "Inspector eingeblendet.", .english: "Inspector shown."],
         "command.recordingAgreementNotice": [.german: "Aufzeichnung nur nach vorheriger Absprache mit allen Teilnehmenden starten.", .english: "Recording should only be started after prior agreement with everyone in the meeting."],
         "command.next.completePermissions": [.german: "Berechtigungen vervollständigen", .english: "Complete permissions"],
         "command.next.transcribe": [.german: "Lokal transkribieren", .english: "Transcribe locally"],
@@ -1792,6 +1794,7 @@ enum L10n {
         "command.nextDetail.export": [.german: "KI-Handoff-Pakete im Dateien-Tab öffnen, teilen oder sammeln.", .english: "Open, share, or collect AI handoff packages from the Files tab."],
 
         "update.cardTitle": [.german: "Update verfügbar", .english: "Update available"],
+        "update.statusTitle": [.german: "Update-Check", .english: "Update check"],
         "update.subtitle": [.german: "Installiert %@, aktuell %@", .english: "Installed %@, latest %@"],
         "update.openRelease": [.german: "Release öffnen", .english: "Open release"],
         "update.dismiss": [.german: "Ausblenden", .english: "Dismiss"],
@@ -1808,6 +1811,8 @@ enum L10n {
         "setup.later": [.german: "Später", .english: "Later"],
         "setup.done": [.german: "Fertig", .english: "Done"],
         "setup.done.disabled": [.german: "Erforderliche Berechtigungen und Tools zuerst abschließen.", .english: "Finish required permissions and tools first."],
+        "setup.readyStatus": [.german: "Setup geprüft: Berechtigungen und Tools sind bereit.", .english: "Setup checked: permissions and tools are ready."],
+        "setup.needsAttentionStatus": [.german: "Setup geprüft: Bitte fehlende Berechtigungen oder Tools abschließen.", .english: "Setup checked: finish missing permissions or tools."],
         "status.ok": [.german: "OK", .english: "OK"],
         "status.readyShort": [.german: "Bereit", .english: "Ready"],
         "status.missing": [.german: "Fehlt", .english: "Missing"],
@@ -2868,19 +2873,25 @@ final class MeetingCaptureViewModel: ObservableObject {
     func checkForUpdates(showStatus: Bool = true) {
         guard !isCheckingForUpdates else { return }
         isCheckingForUpdates = true
-        if showStatus { updateCheckStatus = L10n.text("update.searching") }
+        if showStatus {
+            updateCheckStatus = L10n.text("update.searching")
+            status = updateCheckStatus
+        }
         Task {
             do {
                 let latest = try await GitHubUpdateChecker.checkForUpdate()
                 if let latest, AppSettings.dismissedUpdateVersion != latest.version {
                     updateInfo = latest
                     updateCheckStatus = L10n.format("update.available", latest.version)
+                    if showStatus { status = updateCheckStatus }
                 } else if showStatus {
                     updateCheckStatus = L10n.format("update.current", GitHubUpdateChecker.currentVersion)
+                    status = updateCheckStatus
                 }
             } catch {
                 if showStatus {
                     updateCheckStatus = L10n.format("update.failed", error.localizedDescription)
+                    status = updateCheckStatus
                 }
             }
             isCheckingForUpdates = false
@@ -2933,6 +2944,13 @@ final class MeetingCaptureViewModel: ObservableObject {
         } else if showOverlayIfNeeded {
             showPermissionsOverlay = true
         }
+    }
+
+    func reviewSetup() {
+        refreshPermissions(showOverlayIfNeeded: false)
+        refreshDependencies(showOverlayIfNeeded: false)
+        showPermissionsOverlay = true
+        status = L10n.text(permissionsReady && dependenciesReady ? "setup.readyStatus" : "setup.needsAttentionStatus")
     }
 
     func refreshLocalizedText() {
@@ -4127,8 +4145,7 @@ struct LegacyDashboardView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.checkPermissionsRequested)) { _ in
             EchoPilotWindowController.shared.showApp()
-            vm.refreshPermissions(showOverlayIfNeeded: true)
-            vm.refreshDependencies(showOverlayIfNeeded: true)
+            vm.reviewSetup()
         }
         .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.languageChanged)) { _ in
             vm.refreshLocalizedText()
@@ -4570,8 +4587,7 @@ struct LegacyDashboardView: View {
     private var secondaryActionsMenu: some View {
         Menu {
             Button(text("actions.checkPermissions")) {
-                vm.refreshPermissions(showOverlayIfNeeded: true)
-                vm.refreshDependencies(showOverlayIfNeeded: true)
+                vm.reviewSetup()
             }
                 .disabled(vm.isRecording || vm.isStarting)
             Button(text("actions.reloadMicrophones")) { vm.refreshAudioInputs() }
