@@ -412,6 +412,12 @@ enum MeetingCallDetector {
         await detectTeamsCallFromAccessibility()
     }
 
+    static func detectLiveMeetingContextForAutoStop() async -> MeetingSuggestion? {
+        // Auto-stop must not trust stale ScreenCaptureKit window titles; only
+        // live controls from accessibility prove the meeting is still running.
+        await detectActiveTeamsMeetingFromAccessibility()
+    }
+
     private static func detectMeetingFromWindowTitles() async -> MeetingSuggestion? {
         // Window-title detection uses ScreenCaptureKit and must not trigger the
         // macOS Screen Recording permission prompt during idle app startup.
@@ -4222,15 +4228,9 @@ final class MeetingCaptureViewModel: ObservableObject {
             return
         }
 
-        let detectedContext: MeetingSuggestion?
-        let systemAudioActive: Bool
-        if automaticRecordingMeetingContextSource == .teamsAccessibility {
-            detectedContext = await MeetingCallDetector.detectActiveTeamsMeetingFromAccessibility()
-            systemAudioActive = false
-        } else {
-            detectedContext = await MeetingCallDetector.detectMeetingContext()
-            systemAudioActive = !automaticRecordingHasMeetingContextSignal && service.stats().system.level > 0.025
-        }
+        let detectedContext = await MeetingCallDetector.detectLiveMeetingContextForAutoStop()
+        let systemAudioActive = shouldUseSystemAudioForAutoStopFallback()
+            && service.stats().system.level > 0.025
 
         var safeStatus = MeetingCallDetector.recordingSafeDeviceStatus(systemAudioActive: systemAudioActive)
         if detectedContext != nil {
@@ -4263,6 +4263,10 @@ final class MeetingCaptureViewModel: ObservableObject {
                 systemAudioActive: systemAudioActive
             )
         }
+    }
+
+    private func shouldUseSystemAudioForAutoStopFallback() -> Bool {
+        automaticRecordingMeetingContextSource != .teamsAccessibility
     }
 
     private func updateAutoStopDebugInfo(
