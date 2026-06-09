@@ -46,6 +46,7 @@ struct MeetingDetectionCard: View {
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 14) {
                             countdownStepper
+                            stopDelayStepper
                             Text(L10n.text("autoRecord.microphoneFallback"))
                                 .font(.caption)
                                 .foregroundStyle(EchoPilotTheme.secondaryText)
@@ -53,6 +54,7 @@ struct MeetingDetectionCard: View {
                         }
                         VStack(alignment: .leading, spacing: 6) {
                             countdownStepper
+                            stopDelayStepper
                             Text(L10n.text("autoRecord.microphoneFallback"))
                                 .font(.caption)
                                 .foregroundStyle(EchoPilotTheme.secondaryText)
@@ -62,6 +64,9 @@ struct MeetingDetectionCard: View {
 
                 if let prompt = vm.autoRecordingPrompt {
                     autoRecordingCountdown(prompt)
+                }
+                if let stopPrompt = vm.autoRecordingStopPrompt {
+                    autoRecordingStopCountdown(stopPrompt)
                 }
 
                 HStack(alignment: .top, spacing: 12) {
@@ -126,6 +131,16 @@ struct MeetingDetectionCard: View {
         .font(.caption.weight(.semibold))
     }
 
+    private var stopDelayStepper: some View {
+        Stepper(
+            L10n.format("autoRecord.stopDelaySetting", vm.autoRecordStopDelaySeconds),
+            value: $vm.autoRecordStopDelaySeconds,
+            in: 0...300,
+            step: 1
+        )
+        .font(.caption.weight(.semibold))
+    }
+
     private func autoRecordingCountdown(_ prompt: AutoRecordingPrompt) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
@@ -137,6 +152,24 @@ struct MeetingDetectionCard: View {
                 countdownCopy(prompt)
                 countdownActions
             }
+        }
+        .padding(12)
+        .background(EchoPilotTheme.warning.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(EchoPilotTheme.warning.opacity(0.35), lineWidth: 1)
+        )
+    }
+
+    private func autoRecordingStopCountdown(_ prompt: AutoRecordingStopPrompt) -> some View {
+        Label {
+            Text(L10n.format("autoRecord.stopCountdown", prompt.remainingSeconds))
+                .font(.headline)
+                .foregroundStyle(EchoPilotTheme.text)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "stopwatch")
+                .foregroundStyle(EchoPilotTheme.warning)
         }
         .padding(12)
         .background(EchoPilotTheme.warning.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))

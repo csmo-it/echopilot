@@ -150,6 +150,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: EchoPilotNotifications.autoRecordSettingChanged)) { _ in
             vm.autoRecordMeetingsEnabled = AppSettings.autoRecordMeetingsEnabled
             vm.autoRecordCountdownSeconds = AppSettings.autoRecordCountdownSeconds
+            vm.autoRecordStopDelaySeconds = AppSettings.autoRecordStopDelaySeconds
         }
     }
 

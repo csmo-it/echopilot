@@ -281,10 +281,15 @@ struct AutoRecordingPrompt: Equatable {
     var remainingSeconds: Int
 }
 
+struct AutoRecordingStopPrompt: Equatable {
+    var remainingSeconds: Int
+}
+
 struct MeetingDeviceStatus: Equatable {
     var inMeeting: Bool = false
     var micActive: Bool = false
     var cameraActive: Bool = false
+    var systemAudioActive: Bool = false
     var activeMics: [String] = []
 
     func summary(language: AppLanguage = AppSettings.currentLanguage) -> String {
@@ -292,6 +297,7 @@ struct MeetingDeviceStatus: Equatable {
             var parts: [String] = []
             if micActive { parts.append(L10n.text("meetingDetection.micActive", language: language)) }
             if cameraActive { parts.append(L10n.text("meetingDetection.cameraActive", language: language)) }
+            if systemAudioActive { parts.append(L10n.text("meetingDetection.systemAudioActive", language: language)) }
             if !activeMics.isEmpty { parts.append(activeMics.joined(separator: ", ")) }
             return parts.isEmpty ? L10n.text("meetingDetection.inMeeting", language: language) : parts.joined(separator: " · ")
         }
@@ -360,6 +366,17 @@ enum MeetingCallDetector {
             micActive: !activeMics.isEmpty,
             cameraActive: cameraActive,
             activeMics: activeMics
+        )
+    }
+
+    static func recordingSafeDeviceStatus(systemAudioActive: Bool = false) -> MeetingDeviceStatus {
+        let cameraActive = isCameraRunningSomewhere()
+        return MeetingDeviceStatus(
+            inMeeting: cameraActive || systemAudioActive,
+            micActive: false,
+            cameraActive: cameraActive,
+            systemAudioActive: systemAudioActive,
+            activeMics: []
         )
     }
 
@@ -1715,6 +1732,7 @@ enum AppSettings {
     private static let transcriptPreviewExpandedKey = "transcriptPreviewExpanded"
     static let autoRecordMeetingsEnabledKey = "autoRecordMeetingsEnabled"
     static let autoRecordCountdownSecondsKey = "autoRecordCountdownSeconds"
+    static let autoRecordStopDelaySecondsKey = "autoRecordStopDelaySeconds"
     static let preferredUILanguageKey = "preferredUILanguage"
 
     static var preferredUILanguage: AppLanguagePreference {
@@ -1806,6 +1824,18 @@ enum AppSettings {
             return value > 0 ? max(1, min(60, value)) : 5
         }
         set { UserDefaults.standard.set(max(1, min(60, newValue)), forKey: autoRecordCountdownSecondsKey) }
+    }
+
+    static var hasAutoRecordStopDelaySeconds: Bool {
+        UserDefaults.standard.object(forKey: autoRecordStopDelaySecondsKey) != nil
+    }
+
+    static var autoRecordStopDelaySeconds: Int {
+        get {
+            let value = UserDefaults.standard.integer(forKey: autoRecordStopDelaySecondsKey)
+            return hasAutoRecordStopDelaySeconds ? max(0, min(300, value)) : autoRecordCountdownSeconds
+        }
+        set { UserDefaults.standard.set(max(0, min(300, newValue)), forKey: autoRecordStopDelaySecondsKey) }
     }
 
     private static func dateForMinuteOfDay(_ minuteOfDay: Int) -> Date {
@@ -1917,8 +1947,10 @@ enum L10n {
         "autoRecord.toggle": [.german: "Erkannte Meetings automatisch aufzeichnen", .english: "Automatically record detected meetings"],
         "autoRecord.help": [.german: "EchoPilot nutzt den erkannten Meeting-Titel, wartet den eingestellten Vorlauf ab und startet nur mit vorhandenen Aufnahmeberechtigungen.", .english: "EchoPilot uses the detected meeting title, waits for the configured lead time, and only starts when recording permissions are available."],
         "autoRecord.countdownSetting": [.german: "Countdown: %d Sekunden", .english: "Countdown: %d seconds"],
+        "autoRecord.stopDelaySetting": [.german: "Auto-Stopp-Nachlauf: %d Sekunden", .english: "Auto-stop run-on: %d seconds"],
         "autoRecord.microphoneFallback": [.german: "Mikrofon: zuletzt genutzt, sonst aktives Call-Mikrofon.", .english: "Microphone: last used, otherwise active call microphone."],
         "autoRecord.countdown": [.german: "Meeting erkannt: %@. Aufnahme startet in %d Sekunden.", .english: "Meeting detected: %@. Recording starts in %d seconds."],
+        "autoRecord.stopCountdown": [.german: "Kein aktives Meeting mehr erkannt. Aufnahme stoppt in %d Sekunden.", .english: "No active meeting detected. Recording stops in %d seconds."],
         "autoRecord.notification.title": [.german: "Meeting erkannt", .english: "Meeting detected"],
         "autoRecord.notification.body": [.german: "%@ — EchoPilot startet die Aufnahme in %d Sekunden.", .english: "%@ — EchoPilot starts recording in %d seconds."],
         "autoRecord.cancel": [.german: "Abbrechen", .english: "Cancel"],
@@ -1926,6 +1958,7 @@ enum L10n {
         "autoRecord.status.cancelled": [.german: "Automatische Aufnahme für dieses erkannte Meeting abgebrochen.", .english: "Automatic recording cancelled for this detected meeting."],
         "autoRecord.status.starting": [.german: "Automatische Aufnahme startet: %@", .english: "Starting automatic recording: %@"],
         "autoRecord.status.permissionsBlocked": [.german: "Automatische Aufnahme wartet: Mikrofon und Screen/Systemaudio müssen freigegeben sein.", .english: "Automatic recording is waiting: microphone and Screen/System Audio permissions must be granted."],
+        "autoRecord.status.autoStopping": [.german: "Meeting beendet erkannt. Automatische Aufnahme wird gestoppt.", .english: "Meeting end detected. Stopping automatic recording."],
 
         "recording.title": [.german: "Aufzeichnung", .english: "Recording"],
         "recording.subtitle": [.german: "Meeting einmal vorbereiten, dann die eine klare Aufnahme-Aktion nutzen.", .english: "Prepare the meeting once, then use the one obvious recording action."],
@@ -2113,6 +2146,7 @@ enum L10n {
         "meetingDetection.notInMeeting": [.german: "Kein aktiver Call erkannt", .english: "No active call detected"],
         "meetingDetection.micActive": [.german: "Mikrofon aktiv", .english: "Microphone active"],
         "meetingDetection.cameraActive": [.german: "Kamera aktiv", .english: "Camera active"],
+        "meetingDetection.systemAudioActive": [.german: "Systemaudio aktiv", .english: "System audio active"],
         "meetingDetection.unknownMic": [.german: "Unbekanntes Mikrofon", .english: "Unknown microphone"],
         "meetingDetection.notification.title": [.german: "Meeting erkannt", .english: "Meeting detected"],
         "meetingDetection.notification.body": [.german: "Soll EchoPilot dieses Meeting aufzeichnen? Klicken zum Öffnen.", .english: "Should EchoPilot record this meeting? Click to open."],
@@ -2793,13 +2827,18 @@ final class MeetingCaptureViewModel: ObservableObject {
             AppSettings.autoRecordMeetingsEnabled = autoRecordMeetingsEnabled
             if !autoRecordMeetingsEnabled {
                 cancelAutoRecordingCountdown(suppressCurrent: false)
+                cancelAutoRecordingStopCountdown()
             }
         }
     }
     @Published var autoRecordCountdownSeconds = AppSettings.autoRecordCountdownSeconds {
         didSet { AppSettings.autoRecordCountdownSeconds = autoRecordCountdownSeconds }
     }
+    @Published var autoRecordStopDelaySeconds = AppSettings.autoRecordStopDelaySeconds {
+        didSet { AppSettings.autoRecordStopDelaySeconds = autoRecordStopDelaySeconds }
+    }
     @Published var autoRecordingPrompt: AutoRecordingPrompt?
+    @Published var autoRecordingStopPrompt: AutoRecordingStopPrompt?
     @Published var showPermissionsOverlay = false
     @Published var microphonePermissionGranted = false
     @Published var microphonePermissionStatus = L10n.text("status.notChecked")
@@ -2838,6 +2877,7 @@ final class MeetingCaptureViewModel: ObservableObject {
     private var timer: Timer?
     private var detectorTimer: Timer?
     private var autoRecordingTask: Task<Void, Never>?
+    private var autoRecordingStopTask: Task<Void, Never>?
     private var batchSchedulerTimer: Timer?
     private var startedAt: Date?
     private var transcriptionTask: Task<Void, Never>?
@@ -2845,6 +2885,8 @@ final class MeetingCaptureViewModel: ObservableObject {
     private var didReportAutoRecordingPermissionBlocker = false
     private var suppressAutoRecordingUntilMeetingEnds = false
     private var suppressedAutoRecordingSignature: String?
+    private var markNextRecordingAsAutomatic = false
+    private var recordingStartedAutomatically = false
     private let transcriptPreviewMaxBytes = 64 * 1024
     private var lastDisplayedElapsedSecond = -1
     private var lastIdleBatchAttempt: Date?
@@ -3079,10 +3121,13 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     func start() {
         guard !isStarting, !isRecording else { return }
+        let isAutomaticRecording = markNextRecordingAsAutomatic
+        markNextRecordingAsAutomatic = false
         if meetingDeviceStatus.inMeeting {
             suppressAutoRecordingUntilMeetingEnds = true
         }
         cancelAutoRecordingCountdown(suppressCurrent: false)
+        cancelAutoRecordingStopCountdown()
         refreshPermissions(showOverlayIfNeeded: false)
         refreshAudioInputs()
         guard permissionsReady else {
@@ -3103,6 +3148,7 @@ final class MeetingCaptureViewModel: ObservableObject {
                 }
                 saveCurrentMetadata()
                 isRecording = true
+                recordingStartedAutomatically = isAutomaticRecording
                 if let appendTargetMeetingTitle {
                     status = L10n.format("status.appendRecordingStarted", appendTargetMeetingTitle)
                 } else {
@@ -3112,6 +3158,7 @@ final class MeetingCaptureViewModel: ObservableObject {
                 startTimer()
             } catch {
                 status = L10n.format("status.startFailed", error.localizedDescription)
+                recordingStartedAutomatically = false
                 appendTargetMeetingID = nil
                 appendTargetMeetingTitle = nil
             }
@@ -3122,9 +3169,11 @@ final class MeetingCaptureViewModel: ObservableObject {
     func stop() {
         Task {
             do {
+                cancelAutoRecordingStopCountdown()
                 stopTimer()
                 let session = try await service.stop()
                 isRecording = false
+                recordingStartedAutomatically = false
                 if let session {
                     outputDir = session.outputDir
                     status = L10n.format("status.recordingSaved", session.outputDir.path)
@@ -3143,6 +3192,7 @@ final class MeetingCaptureViewModel: ObservableObject {
                 }
             } catch {
                 isRecording = false
+                recordingStartedAutomatically = false
                 appendTargetMeetingID = nil
                 appendTargetMeetingTitle = nil
                 status = L10n.format("status.stopFailed", error.localizedDescription)
@@ -3674,11 +3724,49 @@ final class MeetingCaptureViewModel: ObservableObject {
         }
         refreshAudioInputs()
         status = L10n.format("autoRecord.status.starting", prompt.title)
+        markNextRecordingAsAutomatic = true
         start()
     }
 
     private func autoRecordingSignature(title: String, detail: String) -> String {
         "\(title.trimmingCharacters(in: .whitespacesAndNewlines))|\(detail.trimmingCharacters(in: .whitespacesAndNewlines))"
+    }
+
+    private func cancelAutoRecordingStopCountdown() {
+        autoRecordingStopTask?.cancel()
+        autoRecordingStopTask = nil
+        autoRecordingStopPrompt = nil
+    }
+
+    private func maybeScheduleAutoRecordingStop() {
+        guard autoRecordMeetingsEnabled, recordingStartedAutomatically, isRecording, !isStarting else {
+            cancelAutoRecordingStopCountdown()
+            return
+        }
+        guard autoRecordingStopTask == nil else { return }
+
+        let delay = autoRecordStopDelaySeconds
+        guard delay > 0 else {
+            status = L10n.text("autoRecord.status.autoStopping")
+            stop()
+            return
+        }
+
+        autoRecordingStopPrompt = AutoRecordingStopPrompt(remainingSeconds: delay)
+        status = L10n.format("autoRecord.stopCountdown", delay)
+        autoRecordingStopTask = Task { @MainActor [weak self] in
+            for remaining in stride(from: delay, through: 1, by: -1) {
+                guard let self, !Task.isCancelled else { return }
+                self.autoRecordingStopPrompt = AutoRecordingStopPrompt(remainingSeconds: remaining)
+                self.status = L10n.format("autoRecord.stopCountdown", remaining)
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.autoRecordingStopTask = nil
+            self.autoRecordingStopPrompt = nil
+            self.status = L10n.text("autoRecord.status.autoStopping")
+            self.stop()
+        }
     }
 
 
@@ -4034,11 +4122,15 @@ final class MeetingCaptureViewModel: ObservableObject {
     }
 
     private func checkMeetingSuggestion() async {
-        guard !isRecording, !isStarting else {
+        guard !isStarting else {
             meetingDeviceStatus = MeetingDeviceStatus()
             didNotifyForCurrentDetectedMeeting = false
             didReportAutoRecordingPermissionBlocker = false
             cancelAutoRecordingCountdown(suppressCurrent: false)
+            return
+        }
+        if isRecording {
+            await checkAutomaticStopDuringRecording()
             return
         }
         let deviceStatus = MeetingCallDetector.deviceStatus()
@@ -4072,6 +4164,40 @@ final class MeetingCaptureViewModel: ObservableObject {
             maybeScheduleAutoRecording(suggestion: suggestion, fallbackDetail: deviceStatus.summary())
         } else {
             maybeScheduleAutoRecording(suggestion: nil, fallbackDetail: deviceStatus.summary())
+        }
+    }
+
+    private func checkAutomaticStopDuringRecording() async {
+        cancelAutoRecordingCountdown(suppressCurrent: false)
+        guard autoRecordMeetingsEnabled, recordingStartedAutomatically else {
+            meetingDeviceStatus = MeetingDeviceStatus()
+            cancelAutoRecordingStopCountdown()
+            return
+        }
+
+        let systemAudioActive = service.stats().system.level > 0.025
+        var safeStatus = MeetingCallDetector.recordingSafeDeviceStatus(systemAudioActive: systemAudioActive)
+        var detectedContext: MeetingSuggestion?
+        if !safeStatus.inMeeting {
+            detectedContext = await MeetingCallDetector.detectMeetingContext()
+            if detectedContext != nil {
+                safeStatus.inMeeting = true
+            }
+        }
+
+        if meetingDeviceStatus != safeStatus {
+            meetingDeviceStatus = safeStatus
+        }
+        if let detectedContext {
+            meetingSuggestion = detectedContext
+        } else if !safeStatus.inMeeting {
+            meetingSuggestion = nil
+        }
+
+        if safeStatus.inMeeting {
+            cancelAutoRecordingStopCountdown()
+        } else {
+            maybeScheduleAutoRecordingStop()
         }
     }
 
@@ -5103,6 +5229,7 @@ struct PreferencesView: View {
     @AppStorage(AppSettings.preferredUILanguageKey) private var preferredUILanguage = AppLanguagePreference.system.rawValue
     @AppStorage(AppSettings.autoRecordMeetingsEnabledKey) private var autoRecordMeetingsEnabled = false
     @AppStorage(AppSettings.autoRecordCountdownSecondsKey) private var autoRecordCountdownSeconds = 5
+    @State private var autoRecordStopDelaySeconds = AppSettings.autoRecordStopDelaySeconds
 
     private var languagePreference: AppLanguagePreference {
         AppLanguagePreference(rawValue: preferredUILanguage) ?? .system
@@ -5170,6 +5297,20 @@ struct PreferencesView: View {
                     .disabled(!autoRecordMeetingsEnabled)
                     .onChange(of: autoRecordCountdownSeconds) { newValue in
                         AppSettings.autoRecordCountdownSeconds = newValue
+                        if !AppSettings.hasAutoRecordStopDelaySeconds {
+                            autoRecordStopDelaySeconds = AppSettings.autoRecordStopDelaySeconds
+                        }
+                        NotificationCenter.default.post(name: EchoPilotNotifications.autoRecordSettingChanged, object: nil)
+                    }
+                    Stepper(
+                        String(format: text("autoRecord.stopDelaySetting"), autoRecordStopDelaySeconds),
+                        value: $autoRecordStopDelaySeconds,
+                        in: 0...300,
+                        step: 1
+                    )
+                    .disabled(!autoRecordMeetingsEnabled)
+                    .onChange(of: autoRecordStopDelaySeconds) { newValue in
+                        AppSettings.autoRecordStopDelaySeconds = newValue
                         NotificationCenter.default.post(name: EchoPilotNotifications.autoRecordSettingChanged, object: nil)
                     }
                     Text(text("autoRecord.help"))
@@ -5345,6 +5486,12 @@ final class EchoPilotPreferencesWindowController: NSObject, NSWindowDelegate {
         rebuildContent()
     }
 
+    @objc private func autoRecordingStopDelayChanged(_ sender: NSStepper) {
+        AppSettings.autoRecordStopDelaySeconds = sender.integerValue
+        NotificationCenter.default.post(name: EchoPilotNotifications.autoRecordSettingChanged, object: nil)
+        rebuildContent()
+    }
+
     private func rebuildContent() {
         guard let window else { return }
         let language = AppSettings.currentLanguage
@@ -5386,14 +5533,19 @@ final class EchoPilotPreferencesWindowController: NSObject, NSWindowDelegate {
         contentView.addSubview(autoRecording)
         let countdownLabel = label(String(format: L10n.text("autoRecord.countdownSetting", language: language), AppSettings.autoRecordCountdownSeconds), frame: NSRect(x: 24, y: 333, width: 220, height: 18), font: .systemFont(ofSize: 11))
         contentView.addSubview(countdownLabel)
-        let countdownStepper = stepper(value: AppSettings.autoRecordCountdownSeconds, frame: NSRect(x: 244, y: 329, width: 80, height: 24))
+        let countdownStepper = stepper(value: AppSettings.autoRecordCountdownSeconds, range: 1...60, action: #selector(autoRecordingCountdownChanged(_:)), frame: NSRect(x: 244, y: 329, width: 80, height: 24))
         countdownStepper.isEnabled = AppSettings.autoRecordMeetingsEnabled
         contentView.addSubview(countdownStepper)
-        let autoRecordingHelp = label(L10n.text("autoRecord.help", language: language), frame: NSRect(x: 24, y: 300, width: 492, height: 28), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
+        let stopDelayLabel = label(String(format: L10n.text("autoRecord.stopDelaySetting", language: language), AppSettings.autoRecordStopDelaySeconds), frame: NSRect(x: 24, y: 309, width: 220, height: 18), font: .systemFont(ofSize: 11))
+        contentView.addSubview(stopDelayLabel)
+        let stopDelayStepper = stepper(value: AppSettings.autoRecordStopDelaySeconds, range: 0...300, action: #selector(autoRecordingStopDelayChanged(_:)), frame: NSRect(x: 244, y: 305, width: 80, height: 24))
+        stopDelayStepper.isEnabled = AppSettings.autoRecordMeetingsEnabled
+        contentView.addSubview(stopDelayStepper)
+        let autoRecordingHelp = label(L10n.text("autoRecord.help", language: language), frame: NSRect(x: 24, y: 286, width: 492, height: 20), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
         autoRecordingHelp.lineBreakMode = .byWordWrapping
         autoRecordingHelp.maximumNumberOfLines = 2
         contentView.addSubview(autoRecordingHelp)
-        let autoRecordingMic = label(L10n.text("autoRecord.microphoneFallback", language: language), frame: NSRect(x: 24, y: 276, width: 492, height: 18), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
+        let autoRecordingMic = label(L10n.text("autoRecord.microphoneFallback", language: language), frame: NSRect(x: 24, y: 270, width: 492, height: 18), font: .systemFont(ofSize: 11), color: .secondaryLabelColor)
         contentView.addSubview(autoRecordingMic)
 
         let automationDivider = NSBox(frame: NSRect(x: 24, y: 262, width: 492, height: 1))
@@ -5494,14 +5646,14 @@ final class EchoPilotPreferencesWindowController: NSObject, NSWindowDelegate {
         return button
     }
 
-    private func stepper(value: Int, frame: NSRect) -> NSStepper {
+    private func stepper(value: Int, range: ClosedRange<Int>, action: Selector, frame: NSRect) -> NSStepper {
         let stepper = NSStepper(frame: frame)
-        stepper.minValue = 1
-        stepper.maxValue = 60
+        stepper.minValue = Double(range.lowerBound)
+        stepper.maxValue = Double(range.upperBound)
         stepper.increment = 1
         stepper.integerValue = value
         stepper.target = self
-        stepper.action = #selector(autoRecordingCountdownChanged(_:))
+        stepper.action = action
         return stepper
     }
 

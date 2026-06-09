@@ -185,6 +185,7 @@ Important:
 - Detection is heuristic: device activity is reliable for "something is using mic/camera", while app names, titles, and participants are best effort.
 - macOS/Teams do not expose a reliable public local "call started with full meeting metadata" API for normal desktop apps.
 - Automatic recording is opt-in. When enabled, EchoPilot shows a configurable countdown for a detected meeting, uses the detected title as recording metadata, and lets the user cancel before capture starts. The default countdown is 5 seconds.
+- Automatic recordings can also stop themselves after EchoPilot no longer sees recording-safe meeting signals. The configurable stop delay defaults to the same value as the start countdown unless the user changes it separately.
 - EchoPilot records with the last selected microphone when it is still available. If that device is missing, it falls back to the microphone currently active in the detected call when macOS exposes it.
 - Recordings should only be started after prior agreement with everyone in the meeting.
 
