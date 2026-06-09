@@ -278,6 +278,7 @@ struct AutoRecordingPrompt: Equatable {
     let title: String
     let detail: String
     let participants: [String]
+    let hasMeetingContextSignal: Bool
     var remainingSeconds: Int
 }
 
@@ -2886,7 +2887,9 @@ final class MeetingCaptureViewModel: ObservableObject {
     private var suppressAutoRecordingUntilMeetingEnds = false
     private var suppressedAutoRecordingSignature: String?
     private var markNextRecordingAsAutomatic = false
+    private var markNextRecordingHasMeetingContextSignal = false
     private var recordingStartedAutomatically = false
+    private var automaticRecordingHasMeetingContextSignal = false
     private let transcriptPreviewMaxBytes = 64 * 1024
     private var lastDisplayedElapsedSecond = -1
     private var lastIdleBatchAttempt: Date?
@@ -3122,7 +3125,9 @@ final class MeetingCaptureViewModel: ObservableObject {
     func start() {
         guard !isStarting, !isRecording else { return }
         let isAutomaticRecording = markNextRecordingAsAutomatic
+        let hasMeetingContextSignal = markNextRecordingHasMeetingContextSignal
         markNextRecordingAsAutomatic = false
+        markNextRecordingHasMeetingContextSignal = false
         if meetingDeviceStatus.inMeeting {
             suppressAutoRecordingUntilMeetingEnds = true
         }
@@ -3149,6 +3154,7 @@ final class MeetingCaptureViewModel: ObservableObject {
                 saveCurrentMetadata()
                 isRecording = true
                 recordingStartedAutomatically = isAutomaticRecording
+                automaticRecordingHasMeetingContextSignal = hasMeetingContextSignal
                 if let appendTargetMeetingTitle {
                     status = L10n.format("status.appendRecordingStarted", appendTargetMeetingTitle)
                 } else {
@@ -3159,6 +3165,7 @@ final class MeetingCaptureViewModel: ObservableObject {
             } catch {
                 status = L10n.format("status.startFailed", error.localizedDescription)
                 recordingStartedAutomatically = false
+                automaticRecordingHasMeetingContextSignal = false
                 appendTargetMeetingID = nil
                 appendTargetMeetingTitle = nil
             }
@@ -3174,6 +3181,7 @@ final class MeetingCaptureViewModel: ObservableObject {
                 let session = try await service.stop()
                 isRecording = false
                 recordingStartedAutomatically = false
+                automaticRecordingHasMeetingContextSignal = false
                 if let session {
                     outputDir = session.outputDir
                     status = L10n.format("status.recordingSaved", session.outputDir.path)
@@ -3193,6 +3201,7 @@ final class MeetingCaptureViewModel: ObservableObject {
             } catch {
                 isRecording = false
                 recordingStartedAutomatically = false
+                automaticRecordingHasMeetingContextSignal = false
                 appendTargetMeetingID = nil
                 appendTargetMeetingTitle = nil
                 status = L10n.format("status.stopFailed", error.localizedDescription)
@@ -3663,6 +3672,7 @@ final class MeetingCaptureViewModel: ObservableObject {
                     title: title,
                     detail: detail,
                     participants: suggestion?.participants ?? currentPrompt.participants,
+                    hasMeetingContextSignal: currentPrompt.hasMeetingContextSignal || suggestion != nil,
                     remainingSeconds: currentPrompt.remainingSeconds
                 )
                 autoRecordingPrompt = currentPrompt
@@ -3675,6 +3685,7 @@ final class MeetingCaptureViewModel: ObservableObject {
             title: title,
             detail: detail,
             participants: suggestion?.participants ?? [],
+            hasMeetingContextSignal: suggestion != nil,
             remainingSeconds: autoRecordCountdownSeconds
         )
         autoRecordingPrompt = prompt
@@ -3725,6 +3736,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         refreshAudioInputs()
         status = L10n.format("autoRecord.status.starting", prompt.title)
         markNextRecordingAsAutomatic = true
+        markNextRecordingHasMeetingContextSignal = prompt.hasMeetingContextSignal
         start()
     }
 
@@ -4175,14 +4187,11 @@ final class MeetingCaptureViewModel: ObservableObject {
             return
         }
 
-        let systemAudioActive = service.stats().system.level > 0.025
+        let detectedContext = await MeetingCallDetector.detectMeetingContext()
+        let systemAudioActive = !automaticRecordingHasMeetingContextSignal && service.stats().system.level > 0.025
         var safeStatus = MeetingCallDetector.recordingSafeDeviceStatus(systemAudioActive: systemAudioActive)
-        var detectedContext: MeetingSuggestion?
-        if !safeStatus.inMeeting {
-            detectedContext = await MeetingCallDetector.detectMeetingContext()
-            if detectedContext != nil {
-                safeStatus.inMeeting = true
-            }
+        if detectedContext != nil {
+            safeStatus.inMeeting = true
         }
 
         if meetingDeviceStatus != safeStatus {
