@@ -194,10 +194,10 @@ struct MeetingDetectionCard: View {
                 .foregroundStyle(EchoPilotTheme.secondaryText)
         }
         .padding(10)
-        .background(EchoPilotTheme.surfaceAlt, in: RoundedRectangle(cornerRadius: 8))
+        .background(EchoPilotTheme.elevated, in: RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(EchoPilotTheme.border, lineWidth: 1)
+                .stroke(EchoPilotTheme.stroke, lineWidth: 1)
         )
     }
 
