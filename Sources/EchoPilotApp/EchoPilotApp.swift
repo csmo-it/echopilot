@@ -2859,6 +2859,7 @@ final class MeetingCaptureViewModel: ObservableObject {
     }
     @Published var autoRecordingPrompt: AutoRecordingPrompt?
     @Published var autoRecordingStopPrompt: AutoRecordingStopPrompt?
+    @Published var autoStopDebugInfo: String?
     @Published var showPermissionsOverlay = false
     @Published var microphonePermissionGranted = false
     @Published var microphonePermissionStatus = L10n.text("status.notChecked")
@@ -3224,6 +3225,7 @@ final class MeetingCaptureViewModel: ObservableObject {
                 } else {
                     status = L10n.text("status.noActiveRecording")
                 }
+                autoStopDebugInfo = nil
             } catch {
                 isRecording = false
                 recordingStartedAutomatically = false
@@ -3232,6 +3234,7 @@ final class MeetingCaptureViewModel: ObservableObject {
                 appendTargetMeetingID = nil
                 appendTargetMeetingTitle = nil
                 status = L10n.format("status.stopFailed", error.localizedDescription)
+                autoStopDebugInfo = nil
             }
         }
     }
@@ -4211,9 +4214,11 @@ final class MeetingCaptureViewModel: ObservableObject {
 
     private func checkAutomaticStopDuringRecording() async {
         cancelAutoRecordingCountdown(suppressCurrent: false)
+        updateAutoStopDebugInfo(stage: "guard")
         guard autoRecordMeetingsEnabled, recordingStartedAutomatically else {
             meetingDeviceStatus = MeetingDeviceStatus()
             cancelAutoRecordingStopCountdown()
+            updateAutoStopDebugInfo(stage: "blocked")
             return
         }
 
@@ -4243,8 +4248,58 @@ final class MeetingCaptureViewModel: ObservableObject {
 
         if safeStatus.inMeeting {
             cancelAutoRecordingStopCountdown()
+            updateAutoStopDebugInfo(
+                stage: "active",
+                detectedContext: detectedContext != nil,
+                safeStatus: safeStatus,
+                systemAudioActive: systemAudioActive
+            )
         } else {
             maybeScheduleAutoRecordingStop()
+            updateAutoStopDebugInfo(
+                stage: "schedule-stop",
+                detectedContext: detectedContext != nil,
+                safeStatus: safeStatus,
+                systemAudioActive: systemAudioActive
+            )
+        }
+    }
+
+    private func updateAutoStopDebugInfo(
+        stage: String,
+        detectedContext: Bool? = nil,
+        safeStatus: MeetingDeviceStatus? = nil,
+        systemAudioActive: Bool? = nil
+    ) {
+        var parts = [
+            "stage=\(stage)",
+            "enabled=\(autoRecordMeetingsEnabled)",
+            "recording=\(isRecording)",
+            "automatic=\(recordingStartedAutomatically)",
+            "source=\(autoStopSourceDescription(automaticRecordingMeetingContextSource))",
+            "stopTask=\(autoRecordingStopTask != nil)",
+            "delay=\(autoRecordStopDelaySeconds)s"
+        ]
+        if let detectedContext {
+            parts.append("context=\(detectedContext)")
+        }
+        if let safeStatus {
+            parts.append("safeInMeeting=\(safeStatus.inMeeting)")
+            parts.append("camera=\(safeStatus.cameraActive)")
+            parts.append("systemAudio=\(safeStatus.systemAudioActive)")
+        }
+        if let systemAudioActive {
+            parts.append("audioLevelSignal=\(systemAudioActive)")
+        }
+        autoStopDebugInfo = "Auto-Stop debug: " + parts.joined(separator: " | ")
+    }
+
+    private func autoStopSourceDescription(_ source: MeetingSuggestionSource?) -> String {
+        switch source {
+        case .teamsAccessibility: return "teamsAccessibility"
+        case .windowTitle: return "windowTitle"
+        case .teamsLog: return "teamsLog"
+        case nil: return "nil"
         }
     }
 

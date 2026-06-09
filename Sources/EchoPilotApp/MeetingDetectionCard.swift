@@ -68,6 +68,9 @@ struct MeetingDetectionCard: View {
                 if let stopPrompt = vm.autoRecordingStopPrompt {
                     autoRecordingStopCountdown(stopPrompt)
                 }
+                if vm.isRecording, let debugInfo = vm.autoStopDebugInfo {
+                    autoStopDebug(debugInfo)
+                }
 
                 HStack(alignment: .top, spacing: 12) {
                     StatusChip(
@@ -176,6 +179,25 @@ struct MeetingDetectionCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: 8)
                 .stroke(EchoPilotTheme.warning.opacity(0.35), lineWidth: 1)
+        )
+    }
+
+    private func autoStopDebug(_ info: String) -> some View {
+        Label {
+            Text(info)
+                .font(.caption.monospaced())
+                .foregroundStyle(EchoPilotTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        } icon: {
+            Image(systemName: "wrench.and.screwdriver")
+                .foregroundStyle(EchoPilotTheme.secondaryText)
+        }
+        .padding(10)
+        .background(EchoPilotTheme.surfaceAlt, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(EchoPilotTheme.border, lineWidth: 1)
         )
     }
 
