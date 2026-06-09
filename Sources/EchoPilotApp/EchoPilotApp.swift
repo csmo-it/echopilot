@@ -266,11 +266,18 @@ struct WhisperModelInfo: Identifiable, Equatable {
     }
 }
 
+enum MeetingSuggestionSource: Equatable {
+    case teamsAccessibility
+    case windowTitle
+    case teamsLog
+}
+
 struct MeetingSuggestion: Equatable {
     let appName: String
     let detail: String
     var title: String? = nil
     var participants: [String] = []
+    var source: MeetingSuggestionSource? = nil
 }
 
 struct AutoRecordingPrompt: Equatable {
@@ -279,6 +286,7 @@ struct AutoRecordingPrompt: Equatable {
     let detail: String
     let participants: [String]
     let hasMeetingContextSignal: Bool
+    let meetingContextSource: MeetingSuggestionSource?
     var remainingSeconds: Int
 }
 
@@ -400,6 +408,10 @@ enum MeetingCallDetector {
         return nil
     }
 
+    static func detectActiveTeamsMeetingFromAccessibility() async -> MeetingSuggestion? {
+        await detectTeamsCallFromAccessibility()
+    }
+
     private static func detectMeetingFromWindowTitles() async -> MeetingSuggestion? {
         // Window-title detection uses ScreenCaptureKit and must not trigger the
         // macOS Screen Recording permission prompt during idle app startup.
@@ -439,7 +451,7 @@ enum MeetingCallDetector {
                 else { continue }
                 let displayAppName = appName.isEmpty ? "Meeting-App" : appName
                 let detail = cleanedTitle.map { "\(displayAppName): \($0)" } ?? (title.isEmpty ? displayAppName : "\(displayAppName): \(title)")
-                return MeetingSuggestion(appName: displayAppName, detail: detail, title: cleanedTitle)
+                return MeetingSuggestion(appName: displayAppName, detail: detail, title: cleanedTitle, source: .windowTitle)
             }
         } catch {
             // ScreenCaptureKit may need permission. Window-title detection is best-effort.
@@ -480,7 +492,13 @@ enum MeetingCallDetector {
         } else {
             detail = "Microsoft Teams"
         }
-        return MeetingSuggestion(appName: "Microsoft Teams", detail: detail, title: title, participants: participantNames)
+        return MeetingSuggestion(
+            appName: "Microsoft Teams",
+            detail: detail,
+            title: title,
+            participants: participantNames,
+            source: .teamsAccessibility
+        )
     }
 
     private static func teamsMeetingWindow(in app: AXUIElement) -> AXUIElement? {
@@ -735,7 +753,8 @@ enum MeetingCallDetector {
         guard let lastMatch, lastMatch.active else { return nil }
         return MeetingSuggestion(
             appName: "Microsoft Teams",
-            detail: "\(lastMatch.detail) · erkannt aus lokalem Teams-Log"
+            detail: "\(lastMatch.detail) · erkannt aus lokalem Teams-Log",
+            source: .teamsLog
         )
     }
 
@@ -2888,8 +2907,10 @@ final class MeetingCaptureViewModel: ObservableObject {
     private var suppressedAutoRecordingSignature: String?
     private var markNextRecordingAsAutomatic = false
     private var markNextRecordingHasMeetingContextSignal = false
+    private var markNextRecordingMeetingContextSource: MeetingSuggestionSource?
     private var recordingStartedAutomatically = false
     private var automaticRecordingHasMeetingContextSignal = false
+    private var automaticRecordingMeetingContextSource: MeetingSuggestionSource?
     private let transcriptPreviewMaxBytes = 64 * 1024
     private var lastDisplayedElapsedSecond = -1
     private var lastIdleBatchAttempt: Date?
@@ -3126,8 +3147,10 @@ final class MeetingCaptureViewModel: ObservableObject {
         guard !isStarting, !isRecording else { return }
         let isAutomaticRecording = markNextRecordingAsAutomatic
         let hasMeetingContextSignal = markNextRecordingHasMeetingContextSignal
+        let meetingContextSource = markNextRecordingMeetingContextSource
         markNextRecordingAsAutomatic = false
         markNextRecordingHasMeetingContextSignal = false
+        markNextRecordingMeetingContextSource = nil
         if meetingDeviceStatus.inMeeting {
             suppressAutoRecordingUntilMeetingEnds = true
         }
@@ -3155,6 +3178,7 @@ final class MeetingCaptureViewModel: ObservableObject {
                 isRecording = true
                 recordingStartedAutomatically = isAutomaticRecording
                 automaticRecordingHasMeetingContextSignal = hasMeetingContextSignal
+                automaticRecordingMeetingContextSource = meetingContextSource
                 if let appendTargetMeetingTitle {
                     status = L10n.format("status.appendRecordingStarted", appendTargetMeetingTitle)
                 } else {
@@ -3166,6 +3190,7 @@ final class MeetingCaptureViewModel: ObservableObject {
                 status = L10n.format("status.startFailed", error.localizedDescription)
                 recordingStartedAutomatically = false
                 automaticRecordingHasMeetingContextSignal = false
+                automaticRecordingMeetingContextSource = nil
                 appendTargetMeetingID = nil
                 appendTargetMeetingTitle = nil
             }
@@ -3182,6 +3207,7 @@ final class MeetingCaptureViewModel: ObservableObject {
                 isRecording = false
                 recordingStartedAutomatically = false
                 automaticRecordingHasMeetingContextSignal = false
+                automaticRecordingMeetingContextSource = nil
                 if let session {
                     outputDir = session.outputDir
                     status = L10n.format("status.recordingSaved", session.outputDir.path)
@@ -3202,6 +3228,7 @@ final class MeetingCaptureViewModel: ObservableObject {
                 isRecording = false
                 recordingStartedAutomatically = false
                 automaticRecordingHasMeetingContextSignal = false
+                automaticRecordingMeetingContextSource = nil
                 appendTargetMeetingID = nil
                 appendTargetMeetingTitle = nil
                 status = L10n.format("status.stopFailed", error.localizedDescription)
@@ -3673,6 +3700,7 @@ final class MeetingCaptureViewModel: ObservableObject {
                     detail: detail,
                     participants: suggestion?.participants ?? currentPrompt.participants,
                     hasMeetingContextSignal: currentPrompt.hasMeetingContextSignal || suggestion != nil,
+                    meetingContextSource: currentPrompt.meetingContextSource ?? suggestion?.source,
                     remainingSeconds: currentPrompt.remainingSeconds
                 )
                 autoRecordingPrompt = currentPrompt
@@ -3686,6 +3714,7 @@ final class MeetingCaptureViewModel: ObservableObject {
             detail: detail,
             participants: suggestion?.participants ?? [],
             hasMeetingContextSignal: suggestion != nil,
+            meetingContextSource: suggestion?.source,
             remainingSeconds: autoRecordCountdownSeconds
         )
         autoRecordingPrompt = prompt
@@ -3737,6 +3766,7 @@ final class MeetingCaptureViewModel: ObservableObject {
         status = L10n.format("autoRecord.status.starting", prompt.title)
         markNextRecordingAsAutomatic = true
         markNextRecordingHasMeetingContextSignal = prompt.hasMeetingContextSignal
+        markNextRecordingMeetingContextSource = prompt.meetingContextSource
         start()
     }
 
@@ -4187,8 +4217,16 @@ final class MeetingCaptureViewModel: ObservableObject {
             return
         }
 
-        let detectedContext = await MeetingCallDetector.detectMeetingContext()
-        let systemAudioActive = !automaticRecordingHasMeetingContextSignal && service.stats().system.level > 0.025
+        let detectedContext: MeetingSuggestion?
+        let systemAudioActive: Bool
+        if automaticRecordingMeetingContextSource == .teamsAccessibility {
+            detectedContext = await MeetingCallDetector.detectActiveTeamsMeetingFromAccessibility()
+            systemAudioActive = false
+        } else {
+            detectedContext = await MeetingCallDetector.detectMeetingContext()
+            systemAudioActive = !automaticRecordingHasMeetingContextSignal && service.stats().system.level > 0.025
+        }
+
         var safeStatus = MeetingCallDetector.recordingSafeDeviceStatus(systemAudioActive: systemAudioActive)
         if detectedContext != nil {
             safeStatus.inMeeting = true
